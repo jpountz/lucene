@@ -74,6 +74,11 @@ public abstract class DocIdSetIterator {
       }
 
       @Override
+      public int nextNonMatchingDoc() throws IOException {
+        return DocIdSetIterator.NO_MORE_DOCS;
+      }
+
+      @Override
       public int advance(int target) throws IOException {
         doc = target;
         if (doc >= maxDoc) {
@@ -161,6 +166,11 @@ public abstract class DocIdSetIterator {
    * @since 2.9
    */
   public abstract int nextDoc() throws IOException;
+
+  /** Return the next doc ID that is beyond the current document that may not be returned by this {@link DocIdSetIterator}. */
+  public int nextNonMatchingDoc() throws IOException {
+    return docID() + 1;
+  }
 
   /**
    * Advances to the first beyond the current whose document number is greater than or equal to

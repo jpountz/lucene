@@ -219,6 +219,15 @@ final class ConjunctionDISI extends DocIdSetIterator {
   }
 
   @Override
+  public int nextNonMatchingDoc() throws IOException {
+    int min = Math.min(lead1.nextNonMatchingDoc(), lead2.nextNonMatchingDoc());
+    for (DocIdSetIterator disi : others) {
+      min = Math.min(min, disi.nextNonMatchingDoc());
+    }
+    return min;
+  }
+
+  @Override
   public long cost() {
     return lead1.cost(); // overestimate
   }

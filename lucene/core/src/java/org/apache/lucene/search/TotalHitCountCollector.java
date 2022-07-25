@@ -59,6 +59,11 @@ public class TotalHitCountCollector implements Collector {
       public void collect(int doc) throws IOException {
         totalHits++;
       }
+
+      @Override
+      public void collectRange(int minDoc, int maxDoc) throws IOException {
+        totalHits += maxDoc - minDoc;
+      }
     };
   }
 }

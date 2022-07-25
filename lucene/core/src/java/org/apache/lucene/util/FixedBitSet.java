@@ -287,6 +287,33 @@ public final class FixedBitSet extends BitSet {
   }
 
   @Override
+  public int nextClearBit(int index) {
+    assert index >= 0 && index < numBits : "index=" + index + ", numBits=" + numBits;
+    int i = index >> 6;
+    long word = ~bits[i] >> index; // skip all the bits to the right of index
+
+    int nextClearBit = -1;
+
+    if (word != 0) {
+      nextClearBit = index + Long.numberOfTrailingZeros(word);
+    } else {
+      while (++i < numWords) {
+        word = ~bits[i];
+        if (word != 0) {
+          nextClearBit = (i << 6) + Long.numberOfTrailingZeros(word);
+          break;
+        }
+      }
+    }
+
+    if (nextClearBit < 0 || nextClearBit >= numBits) {
+      return DocIdSetIterator.NO_MORE_DOCS;
+    } else {
+      return nextClearBit;
+    }
+  }
+
+  @Override
   public int prevSetBit(int index) {
     assert index >= 0 && index < numBits : "index=" + index + " numBits=" + numBits;
     int i = index >> 6;

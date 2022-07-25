@@ -92,6 +92,18 @@ public class BitSetIterator extends DocIdSetIterator {
     return doc = bits.nextSetBit(target);
   }
 
+  private int nextUnsetBit = -1;
+
+  @Override
+  public int nextNonMatchingDoc() {
+    int doc = docID();
+    if (nextUnsetBit <= doc) {
+      // Cache the result as nextClearBit might be expensive if there is a really long run of zeros
+      nextUnsetBit = bits.nextClearBit(doc);
+    }
+    return nextUnsetBit;
+  }
+
   @Override
   public long cost() {
     return cost;

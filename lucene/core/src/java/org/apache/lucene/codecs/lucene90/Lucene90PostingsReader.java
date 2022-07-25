@@ -349,6 +349,8 @@ public final class Lucene90PostingsReader extends PostingsReaderBase {
     private boolean isFreqsRead;
     private int singletonDocID; // docid when there is a single pulsed posting, otherwise -1
 
+    private int nextNonMatchingDoc = -1;
+
     public BlockDocsEnum(FieldInfo fieldInfo) throws IOException {
       this.startDocIn = Lucene90PostingsReader.this.docIn;
       this.docIn = null;
@@ -448,11 +450,15 @@ public final class Lucene90PostingsReader extends PostingsReaderBase {
         isFreqsRead = true;
       }
 
+      nextNonMatchingDoc = -1;
       final int left = docFreq - blockUpto;
       assert left >= 0;
 
       if (left >= BLOCK_SIZE) {
-        pforUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        final boolean dense = pforUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        if (dense) {
+          nextNonMatchingDoc = (int) (docBuffer[BLOCK_SIZE - 1] + 1);
+        }
 
         if (indexHasFreq) {
           if (needsFreq) {
@@ -489,6 +495,14 @@ public final class Lucene90PostingsReader extends PostingsReaderBase {
       doc = (int) docBuffer[docBufferUpto];
       docBufferUpto++;
       return doc;
+    }
+
+    @Override
+    public int nextNonMatchingDoc() throws IOException {
+      if (nextNonMatchingDoc == -1) {
+        return super.nextNonMatchingDoc();
+      }
+      return nextNonMatchingDoc;
     }
 
     @Override

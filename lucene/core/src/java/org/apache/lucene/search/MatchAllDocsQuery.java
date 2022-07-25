@@ -57,10 +57,14 @@ public final class MatchAllDocsQuery extends Query {
             ScoreAndDoc scorer = new ScoreAndDoc();
             scorer.score = score;
             collector.setScorer(scorer);
-            for (int doc = min; doc < max; ++doc) {
-              scorer.doc = doc;
-              if (acceptDocs == null || acceptDocs.get(doc)) {
-                collector.collect(doc);
+            if (scoreMode.needsScores() == false && acceptDocs == null) {
+              collector.collectRange(min, max);
+            } else {
+              for (int doc = min; doc < max; ++doc) {
+                scorer.doc = doc;
+                if (acceptDocs == null || acceptDocs.get(doc)) {
+                  collector.collect(doc);
+                }
               }
             }
             return max == maxDoc ? DocIdSetIterator.NO_MORE_DOCS : max;

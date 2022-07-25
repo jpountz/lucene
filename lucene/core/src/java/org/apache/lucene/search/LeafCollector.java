@@ -83,6 +83,13 @@ public interface LeafCollector {
    */
   void collect(int doc) throws IOException;
 
+  /** Collect a range of documents. */
+  default void collectRange(int minDoc, int maxDoc) throws IOException {
+    for (int i = minDoc; i < maxDoc; ++i) {
+      collect(i);
+    }
+  }
+
   /**
    * Optionally returns an iterator over competitive documents.
    *

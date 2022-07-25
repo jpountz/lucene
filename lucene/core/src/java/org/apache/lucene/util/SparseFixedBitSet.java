@@ -349,6 +349,17 @@ public class SparseFixedBitSet extends BitSet {
     return (i64 << 6) | Long.numberOfTrailingZeros(bits);
   }
 
+  @Override
+  public int nextClearBit(int index) {
+    // TODO: optimize
+    for (int i = index; i < length; ++i) {
+      if (get(i) == false) {
+        return i;
+      }
+    }
+    return DocIdSetIterator.NO_MORE_DOCS;
+  }
+
   /** Return the last document that occurs on or before the provided block index. */
   private int lastDoc(int i4096) {
     long index;

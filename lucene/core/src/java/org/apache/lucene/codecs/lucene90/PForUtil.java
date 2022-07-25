@@ -133,10 +133,11 @@ final class PForUtil {
   }
 
   /** Decode deltas, compute the prefix sum and add {@code base} to all decoded longs. */
-  void decodeAndPrefixSum(DataInput in, long base, long[] longs) throws IOException {
+  boolean decodeAndPrefixSum(DataInput in, long base, long[] longs) throws IOException {
     final int token = Byte.toUnsignedInt(in.readByte());
     final int bitsPerValue = token & 0x1f;
     final int numExceptions = token >>> 5;
+    boolean dense = false;
     if (numExceptions == 0) {
       // when there are no exceptions to apply, we can be a bit more efficient with our decoding
       if (bitsPerValue == 0) {
@@ -146,6 +147,7 @@ final class PForUtil {
           // this will often be the common case when working with doc IDs, so we special-case it to
           // be slightly more efficient
           prefixSumOfOnes(longs, base);
+          dense = true;
         } else {
           prefixSumOf(longs, base, val);
         }
@@ -164,6 +166,7 @@ final class PForUtil {
       applyExceptions32(bitsPerValue, numExceptions, in, longs);
       prefixSum32(longs, base);
     }
+    return dense;
   }
 
   /** Skip 128 integers. */

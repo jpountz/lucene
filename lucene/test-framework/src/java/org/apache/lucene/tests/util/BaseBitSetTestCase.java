@@ -104,6 +104,18 @@ public abstract class BaseBitSetTestCase<T extends BitSet> extends LuceneTestCas
     }
   }
 
+  /** Test {@link BitSet#nextClearBit(int)}. */
+  public void testNextClearBit() throws IOException {
+    final int numBits = 1 + random().nextInt(100000);
+    for (float percentSet : new float[] {0, 0.01f, 0.1f, 0.5f, 0.9f, 0.99f, 1f}) {
+      BitSet set1 = new JavaUtilBitSet(randomSet(numBits, percentSet), numBits);
+      T set2 = copyOf(set1, numBits);
+      for (int i = 0; i < numBits; ++i) {
+        assertEquals(set1.nextClearBit(i), set2.nextClearBit(i));
+      }
+    }
+  }
+
   /** Test the {@link BitSet#set} method. */
   public void testSet() throws IOException {
     Random random = random();
@@ -305,6 +317,15 @@ public abstract class BaseBitSetTestCase<T extends BitSet> extends LuceneTestCas
     public int nextSetBit(int i) {
       int next = bitSet.nextSetBit(i);
       if (next == -1) {
+        next = DocIdSetIterator.NO_MORE_DOCS;
+      }
+      return next;
+    }
+
+    @Override
+    public int nextClearBit(int index) {
+      int next = bitSet.nextClearBit(index);
+      if (next >= numBits) {
         next = DocIdSetIterator.NO_MORE_DOCS;
       }
       return next;
