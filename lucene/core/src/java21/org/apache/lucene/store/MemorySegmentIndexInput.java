@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
@@ -155,6 +156,17 @@ abstract class MemorySegmentIndexInput extends IndexInput implements RandomAcces
       readBytesBoundary(b, offset, len);
     } catch (NullPointerException | IllegalStateException e) {
       throw alreadyClosed(e);
+    }
+  }
+
+  @Override
+  public ByteBuffer readNBytes(int numBytes) throws IOException {
+    try {
+      ByteBuffer bytes = curSegment.asSlice(curPosition, numBytes).asByteBuffer();
+      curPosition += numBytes;
+      return bytes;
+    } catch (IndexOutOfBoundsException e) {
+      return super.readNBytes(numBytes);
     }
   }
 

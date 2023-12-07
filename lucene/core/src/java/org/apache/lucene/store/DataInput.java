@@ -16,7 +16,9 @@
  */
 package org.apache.lucene.store;
 
+import java.io.EOFException;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
@@ -313,4 +315,11 @@ public abstract class DataInput implements Cloneable {
    * <code>numBytes</code> are not supported.
    */
   public abstract void skipBytes(final long numBytes) throws IOException;
+
+  public ByteBuffer readNBytes(int numBytes) throws IOException {
+    byte[] bytes = new byte[numBytes];
+    readBytes(bytes, 0, bytes.length);
+    return ByteBuffer.wrap(bytes);
+  }
+
 }

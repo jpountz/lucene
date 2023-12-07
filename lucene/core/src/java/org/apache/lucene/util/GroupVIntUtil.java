@@ -16,8 +16,12 @@
  */
 package org.apache.lucene.util;
 
+import java.io.EOFException;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+
 import org.apache.lucene.store.DataInput;
+import org.apache.lucene.store.IndexInput;
 
 /**
  * This class contains utility methods and constants for group varint
@@ -60,6 +64,45 @@ public final class GroupVIntUtil {
         return (in.readShort() & 0xFFFFL) | ((in.readByte() & 0xFFL) << 16);
       default:
         return in.readInt() & 0xFFFFFFFFL;
+    }
+  }
+
+  public static void readGroupVInt(ByteBuffer src, long[] dst, int offset) throws IOException {
+    assert src.remaining() >= MAX_LENGTH_PER_GROUP;
+
+    final int flag = src.get() & 0xFF;
+    final int n1Minus1 = flag >> 6;
+    final int n2Minus1 = (flag >> 4) & 0x03;
+    final int n3Minus1 = (flag >> 2) & 0x03;
+    final int n4Minus1 = flag & 0x03;
+
+    // This code path has fewer conditionals and tends to be significantly faster in benchmarks
+    int pos = src.position();
+    dst[offset] = src.getInt(pos) & GROUP_VINT_MASKS[n1Minus1];
+    pos +=  1 + n1Minus1;
+    dst[offset + 1] = src.getInt(pos) & GROUP_VINT_MASKS[n2Minus1];
+    pos += 1 + n2Minus1;
+    dst[offset + 2] = src.getInt(pos) & GROUP_VINT_MASKS[n3Minus1];
+    pos += 1 + n3Minus1;
+    dst[offset + 3] = src.getInt(pos) & GROUP_VINT_MASKS[n4Minus1];
+    pos += 1 + n4Minus1;
+    src.position(pos);
+  }
+
+  public static void readGroupVInts(IndexInput in, long[] dst, int limit) throws IOException {
+    int i;
+    for (i = 0; i <= limit - 4; i += 4) {
+      try {
+        ByteBuffer buf = in.readNBytes(MAX_LENGTH_PER_GROUP);
+        readGroupVInt(buf, dst, i);
+        in.seek(in.getFilePointer() - buf.remaining()); // rewind unread bytes
+      } catch (@SuppressWarnings("unused") EOFException|IndexOutOfBoundsException e) {
+        // TODO: what are the right exception types
+        readGroupVInt(in, dst, i);
+      }
+    }
+    for (; i < limit; ++i) {
+      dst[i] = in.readVInt();
     }
   }
 }

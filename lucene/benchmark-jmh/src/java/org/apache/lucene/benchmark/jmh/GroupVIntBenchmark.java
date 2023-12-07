@@ -31,6 +31,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.NIOFSDirectory;
+import org.apache.lucene.util.GroupVIntUtil;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -172,6 +173,13 @@ public class GroupVIntBenchmark {
   public void mmap_byteBufferReadGroupVInt(Blackhole bh) throws IOException {
     byteBufferGVIntIn.seek(0);
     byteBufferGVIntIn.readGroupVInts(values, size);
+    bh.consume(values);
+  }
+
+  @Benchmark
+  public void mmap_byteBufferReadGroupVInt_viaByteBuffer(Blackhole bh) throws IOException {
+    byteBufferGVIntIn.seek(0);
+    GroupVIntUtil.readGroupVInts(byteBufferGVIntIn, values, maxSize);
     bh.consume(values);
   }
 
