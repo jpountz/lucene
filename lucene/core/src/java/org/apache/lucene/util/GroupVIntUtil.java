@@ -17,6 +17,7 @@
 package org.apache.lucene.util;
 
 import java.io.IOException;
+
 import org.apache.lucene.store.DataInput;
 
 /**
@@ -62,4 +63,27 @@ public final class GroupVIntUtil {
         return in.readInt() & 0xFFFFFFFFL;
     }
   }
+
+  public static interface IntReader {
+    int read(long v);
+  }
+
+  public static long readGroupVInt(int flag, IntReader reader, long pos, long[] dst, int offset) throws IOException {
+    final int n1Minus1 = flag >> 6;
+    final int n2Minus1 = (flag >> 4) & 0x03;
+    final int n3Minus1 = (flag >> 2) & 0x03;
+    final int n4Minus1 = flag & 0x03;
+
+    // This code path has fewer conditionals and tends to be significantly faster in benchmarks
+    dst[offset] = reader.read(pos) & GROUP_VINT_MASKS[n1Minus1];
+    pos +=  1 + n1Minus1;
+    dst[offset + 1] = reader.read(pos) & GROUP_VINT_MASKS[n2Minus1];
+    pos += 1 + n2Minus1;
+    dst[offset + 2] = reader.read(pos) & GROUP_VINT_MASKS[n3Minus1];
+    pos += 1 + n3Minus1;
+    dst[offset + 3] = reader.read(pos) & GROUP_VINT_MASKS[n4Minus1];
+    pos += 1 + n4Minus1;
+    return pos;
+  }
+
 }
