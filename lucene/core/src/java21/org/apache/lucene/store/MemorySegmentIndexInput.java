@@ -162,7 +162,7 @@ abstract class MemorySegmentIndexInput extends IndexInput implements RandomAcces
   @Override
   public ByteBuffer readNBytes(int numBytes) throws IOException {
     try {
-      ByteBuffer bytes = curSegment.asSlice(curPosition, numBytes).asByteBuffer();
+      ByteBuffer bytes = curSegment.asSlice(curPosition, numBytes).asByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
       curPosition += numBytes;
       return bytes;
     } catch (IndexOutOfBoundsException e) {
