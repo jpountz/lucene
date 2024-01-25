@@ -18,6 +18,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Objects;
+
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.KnnVectorsReader;
@@ -187,6 +188,16 @@ public abstract class CodecReader extends LeafReader {
       return null;
     }
     return getDocValuesReader().getSortedSet(fi);
+  }
+
+  @Override
+  public final DocValuesSkipper getDocValuesSkipper(String field) throws IOException {
+    ensureOpen();
+    FieldInfo fi = getFieldInfos().fieldInfo(field);
+    if (fi == null || fi.hasDocValuesSkipIndex() == false) {
+      return null;
+    }
+    return getDocValuesReader().getSkipper(fi);
   }
 
   @Override

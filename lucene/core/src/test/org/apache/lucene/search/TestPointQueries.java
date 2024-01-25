@@ -29,8 +29,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.lucene.codecs.Codec;
+import java.util.concurrent.atomic.AtomicBoolean;import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.FilterCodec;
 import org.apache.lucene.codecs.PointsFormat;
 import org.apache.lucene.codecs.PointsReader;
@@ -42,6 +41,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FloatPoint;
+import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.IntPoint;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.NumericDocValuesField;
@@ -2452,6 +2452,29 @@ public class TestPointQueries extends LuceneTestCase {
     assertEquals(high[0] - low[0] + 1, searcher.count(IntPoint.newRangeQuery("f", low, high)));
 
     r.close();
+    dir.close();
+  }
+
+  public void testRangeQuerySkipsNonMatchingSegments() throws IOException {
+    Directory dir = newDirectory();
+    IndexWriter w = new IndexWriter(dir, newIndexWriterConfig());
+    Document doc = new Document();
+    doc.add(new IntPoint("field", 1, 3));
+    w.addDocument(doc);
+
+    DirectoryReader reader = DirectoryReader.open(w);
+    IndexSearcher searcher = newSearcher(reader);
+
+    Query query = IntPoint.newRangeQuery("field", new int[] { 0, 0 }, new int[] { 2,  2});
+    Weight weight = searcher.createWeight(searcher.rewrite(query), ScoreMode.COMPLETE_NO_SCORES, 1f);
+    assertNull(weight.scorerSupplier(reader.leaves().get(0)));
+
+    query = IntPoint.newRangeQuery("field", new int[] { 2, 2 }, new int[] { 4,  4});
+    weight = searcher.createWeight(searcher.rewrite(query), ScoreMode.COMPLETE_NO_SCORES, 1f);
+    assertNull(weight.scorerSupplier(reader.leaves().get(0)));
+
+    reader.close();
+    w.close();
     dir.close();
   }
 }

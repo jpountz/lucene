@@ -290,6 +290,22 @@ public abstract class PointRangeQuery extends Query {
           return null;
         }
 
+        if (values.getDocCount() == 0) {
+          return null;
+        } else {
+          final byte[] fieldPackedLower = values.getMinPackedValue();
+          final byte[] fieldPackedUpper = values.getMaxPackedValue();
+          for (int i = 0; i < numDims; ++i) {
+            int offset = i * bytesPerDim;
+            if (comparator.compare(lowerPoint, offset, fieldPackedUpper, offset) > 0
+                || comparator.compare(upperPoint, offset, fieldPackedLower, offset) < 0) {
+              // If this query is a required clause of a boolean query, then returning null here will help make sure that we don't call ScorerSupplier#get on other required clauses of the same boolean query, which is an expensive operation for some queries (e.g. multi-term queries).
+              // Returning null here helps make sure that ScorerSupplier#get will not be called on other clauses.
+              return null;
+            }
+          }
+        }
+
         boolean allDocsMatch;
         if (values.getDocCount() == reader.maxDoc()) {
           final byte[] fieldPackedLower = values.getMinPackedValue();
@@ -306,7 +322,7 @@ public abstract class PointRangeQuery extends Query {
         } else {
           allDocsMatch = false;
         }
-
+        
         final Weight weight = this;
         if (allDocsMatch) {
           // all docs have a value and all points are within bounds, so everything matches

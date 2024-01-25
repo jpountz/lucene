@@ -16,16 +16,17 @@
  */
 package org.apache.lucene.codecs.lucene90;
 
-import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.DIRECT_MONOTONIC_BLOCK_SHIFT;
-import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.NUMERIC_BLOCK_SHIFT;
-import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.NUMERIC_BLOCK_SIZE;
+import static org.apache.lucene.codecs.lucene90.Lucene90DocValuesFormat.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.codecs.DocValuesProducer;
@@ -182,6 +183,73 @@ final class Lucene90DocValuesConsumer extends DocValuesConsumer {
     void nextBlock() {
       finish();
       reset();
+    }
+  }
+
+  private static class SkipAccumulator {
+    int minDocID;
+    int maxDocID;
+    int docCount;
+    long minValue;
+    long maxValue;
+
+    SkipAccumulator(int docID) {
+      minDocID = docID;
+      minValue = Long.MAX_VALUE;
+      maxValue = Long.MIN_VALUE;
+      docCount = 0;
+    }
+
+    void accumulate(int docID, long value) {
+      maxDocID = docID;
+      minValue = Math.min(minValue, value);
+      maxValue = Math.max(maxValue, value);
+      ++docCount;
+    }
+
+    void accumulate(SkipAccumulator other) {
+      maxDocID = other.maxDocID;
+      minValue = Math.min(minValue, other.minValue);
+      maxValue = Math.max(maxValue, other.maxValue);
+      docCount += other.docCount;
+    }
+    
+    public static SkipAccumulator merge(List<SkipAccumulator> list) {
+      SkipAccumulator acc = new SkipAccumulator(list.get(0).minDocID);
+      for (SkipAccumulator other : list) {
+        acc.accumulate(other);
+      }
+      return acc;
+    }
+  }
+  
+  private void writeSkipIndex(FieldInfo field, SortedNumericDocValues values) throws IOException {
+    assert field.hasDocValuesSkipIndex();
+    @SuppressWarnings("unchecked")
+    List<SkipAccumulator>[] accumulators = new List[SKIP_INDEX_MAX_LEVEL];
+    for (int i = 0; i < accumulators.length; ++i) {
+      accumulators[i] = new ArrayList<>();
+    }
+    SkipAccumulator accumulator = null;
+    int counter = 0;
+    for (int doc = values.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = values.nextDoc()) {
+      if (counter == 0) {
+        accumulator = new SkipAccumulator(doc);
+      }
+      for (int i = 0, end = values.docValueCount(); i < end; ++i) {
+        accumulator.accumulate(doc, values.nextValue());
+      }
+      if (++counter == SKIP_INDEX_INTERVAL_SIZE) {
+        accumulators[0].add(accumulator);
+        for (int i = 0; i < SKIP_INDEX_MAX_LEVEL - 1; ++i) {
+          if (accumulators[i].size() % SKIP_INDEX_MULTIPLIER == 0) {
+            accumulators[i+1].add(SkipAccumulator.merge(accumulators[i].subList(accumulators[i].size() - SKIP_INDEX_MULTIPLIER, accumulators[i].size())));
+          } else {
+            break;
+          }
+        }
+        counter = 0;
+      }
     }
   }
 
