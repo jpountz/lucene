@@ -487,6 +487,11 @@ final class SlowCompositeCodecReaderWrapper extends CodecReader {
       }
       return new MultiSortedSetDocValues(values, docStarts, map, totalCost);
     }
+
+    @Override
+    public DocValuesSkipper getSkipper(FieldInfo field) throws IOException {
+      return MultiDocValues.getSkipper(new MultiReader(codecReaders), field.name);
+    }
   }
 
   @Override

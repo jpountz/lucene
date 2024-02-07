@@ -17,7 +17,9 @@
 package org.apache.lucene.index;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.List;
+
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.packed.PackedInts;
 
@@ -958,5 +960,87 @@ public class MultiDocValues {
     public long cost() {
       return totalCost;
     }
+  }
+
+  /** Returns a NumericDocValues for a reader's docvalues (potentially merging on-the-fly) */
+  public static DocValuesSkipper getSkipper(final IndexReader r, final String field)
+      throws IOException {
+    final List<LeafReaderContext> leaves = r.leaves();
+    final int size = leaves.size();
+    if (size == 0) {
+      return null;
+    } else if (size == 1) {
+      return leaves.get(0).reader().getDocValuesSkipper(field);
+    }
+
+    boolean anyReal = false;
+    for (LeafReaderContext leaf : leaves) {
+      FieldInfo fieldInfo = leaf.reader().getFieldInfos().fieldInfo(field);
+      if (fieldInfo != null && fieldInfo.hasDocValuesSkipIndex()) {
+        anyReal = true;
+        break;
+      }
+    }
+
+    if (anyReal == false) {
+      return null;
+    }
+    
+    return new DocValuesSkipper() {
+      private int nextLeaf;
+      private DocValuesSkipper currentValues;
+      private LeafReaderContext currentLeaf;
+
+      @Override
+      public void advance(int target) {
+        while (currentLeaf)
+      }
+
+      @Override
+      public int numLevels() {
+        return 0;
+      }
+
+      @Override
+      public int minDocID(int level) {
+        return 0;
+      }
+      
+      @Override
+      public int maxDocID(int level) {
+        return 0;
+      }
+      
+      @Override
+      public long minValue(int level) {
+        return 0;
+      }
+      
+      @Override
+      public long maxValue(int level) {
+        return 0;
+      }
+      
+      @Override
+      public int docCount(int level) {
+        return 0;
+      }
+      
+      @Override
+      public long minValue() {
+        return 0;
+      }
+      
+      @Override
+      public long maxValue() {
+        return 0;
+      }
+      
+      @Override
+      public int docCount() {
+        return 0;
+      }
+
+    };
   }
 }

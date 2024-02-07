@@ -16,10 +16,12 @@
  */
 package org.apache.lucene.codecs.simpletext;
 
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.DOCCOUNT;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.END;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.FIELD;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.LENGTH;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.MAXLENGTH;
+import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.MAXVALUE;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.MINVALUE;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.NUMVALUES;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.ORDPATTERN;
@@ -37,9 +39,11 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.IntFunction;
+
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DocValuesSkipper;
 import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexFileNames;
@@ -59,12 +63,14 @@ import org.apache.lucene.util.StringHelper;
 class SimpleTextDocValuesReader extends DocValuesProducer {
 
   static class OneField {
+    int docCount;
     long dataStartFilePointer;
     String pattern;
     String ordPattern;
     int maxLength;
     boolean fixedLength;
     long minValue;
+    long maxValue;
     long numValues;
   }
 
@@ -94,16 +100,27 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
       OneField field = new OneField();
       fields.put(fieldName, field);
 
+
       readLine();
       assert startsWith(TYPE) : scratch.get().utf8ToString();
 
       DocValuesType dvType = DocValuesType.valueOf(stripPrefix(TYPE));
       assert dvType != DocValuesType.NONE;
+
+      readLine();
+      assert startsWith(DOCCOUNT)
+          : "got " + scratch.get().utf8ToString() + " field=" + fieldName + " ext=" + ext;
+      field.docCount = Integer.parseInt(stripPrefix(DOCCOUNT));
+
       if (dvType == DocValuesType.NUMERIC) {
         readLine();
         assert startsWith(MINVALUE)
             : "got " + scratch.get().utf8ToString() + " field=" + fieldName + " ext=" + ext;
         field.minValue = Long.parseLong(stripPrefix(MINVALUE));
+        readLine();
+        assert startsWith(MAXVALUE)
+            : "got " + scratch.get().utf8ToString() + " field=" + fieldName + " ext=" + ext;
+        field.maxValue = Long.parseLong(stripPrefix(MAXVALUE));
         readLine();
         assert startsWith(PATTERN);
         field.pattern = stripPrefix(PATTERN);
@@ -823,5 +840,67 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
         break;
       }
     }
+  }
+
+  @Override
+  public DocValuesSkipper getSkipper(FieldInfo fieldInfo) {
+    final boolean numeric = fieldInfo.getDocValuesType() == DocValuesType.NUMERIC || fieldInfo.getDocValuesType() == DocValuesType.SORTED_NUMERIC;
+    final OneField field = fields.get(fieldInfo.name);
+
+    // SegmentCoreReaders already verifies this field is
+    // valid:
+    assert field != null;
+    return new DocValuesSkipper() {
+      
+      @Override
+      public int numLevels() {
+        return 1;
+      }
+      
+      @Override
+      public long minValue() {
+        return numeric ? field.minValue : 0;
+      }
+      
+      @Override
+      public long minValue(int level) {
+        return minValue();
+      }
+      
+      @Override
+      public int minDocID(int level) {
+        return 0;
+      }
+      
+      @Override
+      public long maxValue() {
+        return numeric ? field.maxValue : field.numValues - 1;
+      }
+      
+      @Override
+      public long maxValue(int level) {
+        return maxValue();
+      }
+      
+      @Override
+      public int maxDocID(int level) {
+        return DocIdSetIterator.NO_MORE_DOCS;
+      }
+      
+      @Override
+      public int docCount() {
+        return field.docCount;
+      }
+      
+      @Override
+      public int docCount(int level) {
+        return docCount();
+      }
+      
+      @Override
+      public void advance(int target) {
+        // no-op
+      }
+    };
   }
 }
