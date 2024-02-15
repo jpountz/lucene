@@ -27,11 +27,15 @@ import static org.apache.lucene.codecs.lucene99.Lucene99PostingsFormat.VERSION_S
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
+
 import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.PostingsReaderBase;
 import org.apache.lucene.codecs.lucene99.Lucene99PostingsFormat.IntBlockTermState;
+import org.apache.lucene.codecs.lucene99.Lucene99ScoreSkipReader.MutableImpactList;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.Impact;
 import org.apache.lucene.index.Impacts;
 import org.apache.lucene.index.ImpactsEnum;
 import org.apache.lucene.index.IndexFileNames;
@@ -39,11 +43,14 @@ import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SlowImpactsEnum;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.IOUtils;
 
 /**
@@ -319,9 +326,6 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
 
     private int docBufferUpto;
 
-    private Lucene99SkipReader skipper;
-    private boolean skipped;
-
     final IndexInput startDocIn;
 
     IndexInput docIn;
@@ -338,11 +342,6 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
 
     // Where this term's postings start in the .doc file:
     private long docTermStartFP;
-
-    // Where this term's skip data starts (after
-    // docTermStartFP) in the .doc file (or -1 if there is
-    // no skip data for this term):
-    private long skipOffset;
 
     // docID for next skip point, we won't use skipper if
     // target docID is not larger than this
@@ -386,7 +385,6 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       docFreq = termState.docFreq;
       totalTermFreq = indexHasFreq ? termState.totalTermFreq : docFreq;
       docTermStartFP = termState.docStartFP;
-      skipOffset = termState.skipOffset;
       singletonDocID = termState.singletonDocID;
       if (docFreq > 1) {
         if (docIn == null) {
@@ -406,9 +404,8 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       }
       accum = 0;
       blockUpto = 0;
-      nextSkipDoc = BLOCK_SIZE - 1; // we won't skip if target is found in first block
+      nextSkipDoc = -1;
       docBufferUpto = BLOCK_SIZE;
-      skipped = false;
       return this;
     }
 
@@ -446,7 +443,7 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       return doc;
     }
 
-    private void refillDocs() throws IOException {
+    private void refillDocs(int target) throws IOException {
       // Check if we skipped reading the previous block of freqBuffer, and if yes, position docIn
       // after it
       if (isFreqsRead == false) {
@@ -458,7 +455,13 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       assert left >= 0;
 
       if (left >= BLOCK_SIZE) {
-        forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        this.nextSkipDoc += docIn.readVInt();
+        docIn.skipBytes(docIn.readVLong());
+        if (target > nextSkipDoc) {
+          forDeltaUtil.skip(docIn);
+        } else {
+          forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        }
 
         if (indexHasFreq) {
           if (needsFreq) {
@@ -468,19 +471,21 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
           }
         }
         blockUpto += BLOCK_SIZE;
+        this.accum = nextSkipDoc;
       } else if (docFreq == 1) {
         docBuffer[0] = singletonDocID;
         freqBuffer[0] = totalTermFreq;
         docBuffer[1] = NO_MORE_DOCS;
         blockUpto++;
+        nextSkipDoc = DocIdSetIterator.NO_MORE_DOCS;
       } else {
         // Read vInts:
         readVIntBlock(docIn, docBuffer, freqBuffer, left, indexHasFreq, needsFreq);
         prefixSum(docBuffer, left, accum);
         docBuffer[left] = NO_MORE_DOCS;
         blockUpto += left;
+        nextSkipDoc = DocIdSetIterator.NO_MORE_DOCS;
       }
-      accum = docBuffer[BLOCK_SIZE - 1];
       docBufferUpto = 0;
       assert docBuffer[BLOCK_SIZE] == NO_MORE_DOCS;
     }
@@ -488,8 +493,7 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
     @Override
     public int nextDoc() throws IOException {
       if (docBufferUpto == BLOCK_SIZE) {
-        refillDocs(); // we don't need to load freqBuffer for now (will be loaded later if
-        // necessary)
+        refillDocs(doc + 1);
       }
 
       doc = (int) docBuffer[docBufferUpto];
@@ -499,49 +503,8 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
 
     @Override
     public int advance(int target) throws IOException {
-      // current skip docID < docIDs generated from current buffer <= next skip docID
-      // we don't need to skip if target is buffered already
-      if (docFreq > BLOCK_SIZE && target > nextSkipDoc) {
-
-        if (skipper == null) {
-          // Lazy init: first time this enum has ever been used for skipping
-          skipper =
-              new Lucene99SkipReader(
-                  docIn.clone(), MAX_SKIP_LEVELS, indexHasPos, indexHasOffsets, indexHasPayloads);
-        }
-
-        if (!skipped) {
-          assert skipOffset != -1;
-          // This is the first time this enum has skipped
-          // since reset() was called; load the skip data:
-          skipper.init(docTermStartFP + skipOffset, docTermStartFP, 0, 0, docFreq);
-          skipped = true;
-        }
-
-        // always plus one to fix the result, since skip position in Lucene99SkipReader
-        // is a little different from MultiLevelSkipListReader
-        final int newDocUpto = skipper.skipTo(target) + 1;
-
-        if (newDocUpto >= blockUpto) {
-          // Skipper moved
-          assert newDocUpto % BLOCK_SIZE == 0 : "got " + newDocUpto;
-          blockUpto = newDocUpto;
-
-          // Force to read next block
-          docBufferUpto = BLOCK_SIZE;
-          accum = skipper.getDoc(); // actually, this is just lastSkipEntry
-          docIn.seek(skipper.getDocPointer()); // now point to the block we want to search
-          // even if freqBuffer were not read from the previous block, we will mark them as read,
-          // as we don't need to skip the previous block freqBuffer in refillDocs,
-          // as we have already positioned docIn where in needs to be.
-          isFreqsRead = true;
-        }
-        // next time we call advance, this is used to
-        // foresee whether skipper is necessary.
-        nextSkipDoc = skipper.getNextSkipDoc();
-      }
-      if (docBufferUpto == BLOCK_SIZE) {
-        refillDocs();
+      while (target > nextSkipDoc) {
+        refillDocs(target);
       }
 
       // Now scan... this is an inlined/pared down version
@@ -759,6 +722,8 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       assert left >= 0;
 
       if (left >= BLOCK_SIZE) {
+        docIn.readVInt();
+        docIn.skipBytes(docIn.readVLong());
         forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
         pforUtil.decode(docIn, freqBuffer);
         blockUpto += BLOCK_SIZE;
@@ -1064,8 +1029,6 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
 
     private int docBufferUpto;
 
-    private final Lucene99ScoreSkipReader skipper;
-
     final IndexInput docIn;
 
     final boolean indexHasFreqs;
@@ -1082,17 +1045,46 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
     // (needsFreq=false)
     private boolean isFreqsRead;
 
+    private final BytesRefBuilder encodedImpacts = new BytesRefBuilder();
+    private boolean impactsDecoded = true;
+    private boolean docsDecoded = true;
+
+    private final Impacts impacts = new Impacts() {
+
+      private final MutableImpactList impacts = new MutableImpactList();
+
+      @Override
+      public int numLevels() {
+        return 1;
+      }
+
+      @Override
+      public int getDocIdUpTo(int level) {
+        return nextSkipDoc;
+      }
+
+      @Override
+      public List<Impact> getImpacts(int level) {
+        if (impactsDecoded == false) {
+          if (nextSkipDoc == DocIdSetIterator.NO_MORE_DOCS) {
+            impacts.length = 1;
+            impacts.impacts[0].freq = Integer.MAX_VALUE;
+            impacts.impacts[0].norm = 1L;
+          } else {
+            BytesRef encodedImpactsRef = encodedImpacts.get();
+            Lucene99ScoreSkipReader.readImpacts(
+                new ByteArrayDataInput(encodedImpactsRef.bytes, encodedImpactsRef.offset, encodedImpactsRef.length), this.impacts);
+          }
+          impactsDecoded = true;
+        }
+        return impacts;
+      }
+
+    };
+
     public BlockImpactsDocsEnum(FieldInfo fieldInfo, IntBlockTermState termState)
         throws IOException {
       indexHasFreqs = fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
-      final boolean indexHasPositions =
-          fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
-      final boolean indexHasOffsets =
-          fieldInfo
-                  .getIndexOptions()
-                  .compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS)
-              >= 0;
-      final boolean indexHasPayloads = fieldInfo.hasPayloads();
 
       this.docIn = Lucene99PostingsReader.this.docIn.clone();
 
@@ -1103,16 +1095,6 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       accum = 0;
       blockUpto = 0;
       docBufferUpto = BLOCK_SIZE;
-
-      skipper =
-          new Lucene99ScoreSkipReader(
-              docIn.clone(), MAX_SKIP_LEVELS, indexHasPositions, indexHasOffsets, indexHasPayloads);
-      skipper.init(
-          termState.docStartFP + termState.skipOffset,
-          termState.docStartFP,
-          termState.posStartFP,
-          termState.payStartFP,
-          docFreq);
 
       // We set the last element of docBuffer to NO_MORE_DOCS, it helps save conditionals in
       // advance()
@@ -1137,9 +1119,15 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       return doc;
     }
 
-    private void refillDocs() throws IOException {
+    private void refillDocs(int target, boolean shallow) throws IOException {
       // Check if we skipped reading the previous block of freqBuffer, and if yes, position docIn
       // after it
+      if (docsDecoded == false) {
+        forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        this.accum = nextSkipDoc;
+        docsDecoded = true;
+      }
+      
       if (isFreqsRead == false) {
         pforUtil.skip(docIn);
         isFreqsRead = true;
@@ -1149,7 +1137,23 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       assert left >= 0;
 
       if (left >= BLOCK_SIZE) {
-        forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        this.nextSkipDoc += docIn.readVInt();
+        int numImpactsBytes = docIn.readVInt();
+        if (target > nextSkipDoc) {
+          docIn.skipBytes(numImpactsBytes);
+          forDeltaUtil.skip(docIn);
+          this.accum = nextSkipDoc;
+        } else {
+          encodedImpacts.grow(numImpactsBytes);
+          encodedImpacts.setLength(numImpactsBytes);
+          docIn.readBytes(encodedImpacts.bytes(), 0, numImpactsBytes);
+          if (shallow) {
+            docsDecoded = false;
+          } else {
+            forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+            this.accum = nextSkipDoc;
+          }
+        }
         if (indexHasFreqs) {
           isFreqsRead = false;
         }
@@ -1159,60 +1163,48 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
         prefixSum(docBuffer, left, accum);
         docBuffer[left] = NO_MORE_DOCS;
         blockUpto += left;
+        nextSkipDoc = DocIdSetIterator.NO_MORE_DOCS;
       }
-      accum = docBuffer[BLOCK_SIZE - 1];
       docBufferUpto = 0;
       assert docBuffer[BLOCK_SIZE] == NO_MORE_DOCS;
+      impactsDecoded = false;
     }
 
     @Override
     public void advanceShallow(int target) throws IOException {
-      if (target > nextSkipDoc) {
-        // always plus one to fix the result, since skip position in Lucene99SkipReader
-        // is a little different from MultiLevelSkipListReader
-        final int newDocUpto = skipper.skipTo(target) + 1;
-
-        if (newDocUpto >= blockUpto) {
-          // Skipper moved
-          assert newDocUpto % BLOCK_SIZE == 0 : "got " + newDocUpto;
-          blockUpto = newDocUpto;
-
-          // Force to read next block
-          docBufferUpto = BLOCK_SIZE;
-          accum = skipper.getDoc();
-          docIn.seek(skipper.getDocPointer());
-          isFreqsRead = true;
-        }
-        // next time we call advance, this is used to
-        // foresee whether skipper is necessary.
-        nextSkipDoc = skipper.getNextSkipDoc();
+      while (target > nextSkipDoc) {
+        refillDocs(target, true);
       }
-      assert nextSkipDoc >= target;
     }
 
     @Override
     public Impacts getImpacts() throws IOException {
-      // nextDoc() doesn't advance skip lists, so it's important to do it here to make sure we're
-      // not returning impacts over a bigger range of doc IDs than necessary.
-      advanceShallow(doc);
-      return skipper.getImpacts();
+      return impacts;
     }
 
     @Override
     public int nextDoc() throws IOException {
       if (docBufferUpto == BLOCK_SIZE) {
-        refillDocs();
+        refillDocs(doc + 1, false);
       }
+      if (docsDecoded == false) {
+        forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        this.accum = nextSkipDoc;
+        docsDecoded = true;
+      }
+
       return this.doc = (int) docBuffer[docBufferUpto++];
     }
 
     @Override
     public int advance(int target) throws IOException {
-      if (target > nextSkipDoc) {
-        advanceShallow(target);
+      while (target > nextSkipDoc) {
+        refillDocs(target, false);
       }
-      if (docBufferUpto == BLOCK_SIZE) {
-        refillDocs();
+      if (docsDecoded == false) {
+        forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
+        this.accum = nextSkipDoc;
+        docsDecoded = true;
       }
 
       int next = findFirstGreater(docBuffer, target, docBufferUpto);
@@ -1360,6 +1352,8 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       assert left >= 0;
 
       if (left >= BLOCK_SIZE) {
+        docIn.readVInt();
+        docIn.skipBytes(docIn.readVLong());
         forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
         pforUtil.decode(docIn, freqBuffer);
       } else {
@@ -1747,6 +1741,8 @@ public final class Lucene99PostingsReader extends PostingsReaderBase {
       assert left >= 0;
 
       if (left >= BLOCK_SIZE) {
+        docIn.readVInt();
+        docIn.skipBytes(docIn.readVLong());
         forDeltaUtil.decodeAndPrefixSum(docIn, accum, docBuffer);
         if (indexHasFreq) {
           isFreqsRead =

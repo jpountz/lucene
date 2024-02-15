@@ -19,6 +19,7 @@ package org.apache.lucene.codecs.lucene99;
 import java.io.IOException;
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
+import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.packed.PackedInts;
 
 /** Utility class to encode/decode increasing sequences of 128 integers. */
@@ -74,5 +75,10 @@ public class ForDeltaUtil {
     } else {
       forUtil.decodeAndPrefixSum(bitsPerValue, in, base, longs);
     }
+  }
+
+  public void skip(IndexInput in) throws IOException {
+    final int bitsPerValue = Byte.toUnsignedInt(in.readByte());
+    in.skipBytes(forUtil.numBytes(bitsPerValue));
   }
 }

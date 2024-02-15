@@ -25,6 +25,7 @@ import static org.apache.lucene.codecs.lucene99.Lucene99PostingsFormat.TERMS_COD
 import static org.apache.lucene.codecs.lucene99.Lucene99PostingsFormat.VERSION_CURRENT;
 
 import java.io.IOException;
+
 import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.CompetitiveImpactAccumulator;
@@ -36,6 +37,7 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SegmentWriteState;
+import org.apache.lucene.store.ByteBuffersDataOutput;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.ArrayUtil;
@@ -96,6 +98,8 @@ public final class Lucene99PostingsWriter extends PushPostingsWriterBase {
   private boolean fieldHasNorms;
   private NumericDocValues norms;
   private final CompetitiveImpactAccumulator competitiveFreqNormAccumulator =
+      new CompetitiveImpactAccumulator();
+  private final CompetitiveImpactAccumulator competitiveFreqNormAccumulator2 =
       new CompetitiveImpactAccumulator();
 
   /** Creates a postings writer */
@@ -208,6 +212,7 @@ public final class Lucene99PostingsWriter extends PushPostingsWriterBase {
     skipWriter.resetSkip();
     this.norms = norms;
     competitiveFreqNormAccumulator.clear();
+    competitiveFreqNormAccumulator2.clear();
   }
 
   @Override
@@ -242,20 +247,6 @@ public final class Lucene99PostingsWriter extends PushPostingsWriterBase {
     docBufferUpto++;
     docCount++;
 
-    if (docBufferUpto == BLOCK_SIZE) {
-      forDeltaUtil.encodeDeltas(docDeltaBuffer, docOut);
-      if (writeFreqs) {
-        pforUtil.encode(freqBuffer, docOut);
-      }
-      // NOTE: don't set docBufferUpto back to 0 here;
-      // finishDoc will do so (because it needs to see that
-      // the block was filled so it can save skip data)
-    }
-
-    lastDocID = docID;
-    lastPosition = 0;
-    lastStartOffset = 0;
-
     long norm;
     if (fieldHasNorms) {
       boolean found = norms.advanceExact(docID);
@@ -273,6 +264,27 @@ public final class Lucene99PostingsWriter extends PushPostingsWriterBase {
     }
 
     competitiveFreqNormAccumulator.add(writeFreqs ? termDocFreq : 1, norm);
+    competitiveFreqNormAccumulator2.add(writeFreqs ? termDocFreq : 1, norm);
+
+    if (docBufferUpto == BLOCK_SIZE) {
+      docOut.writeVInt(docID - lastBlockDocID);
+      ByteBuffersDataOutput out = new ByteBuffersDataOutput();
+      Lucene99SkipWriter.writeImpacts(competitiveFreqNormAccumulator2, out);
+      competitiveFreqNormAccumulator2.clear();
+      docOut.writeVLong(out.size());
+      out.copyTo(docOut);
+      forDeltaUtil.encodeDeltas(docDeltaBuffer, docOut);
+      if (writeFreqs) {
+        pforUtil.encode(freqBuffer, docOut);
+      }
+      // NOTE: don't set docBufferUpto back to 0 here;
+      // finishDoc will do so (because it needs to see that
+      // the block was filled so it can save skip data)
+    }
+
+    lastDocID = docID;
+    lastPosition = 0;
+    lastStartOffset = 0;
   }
 
   @Override
