@@ -16,6 +16,8 @@
  */
 package org.apache.lucene.index;
 
+import java.io.IOException;
+
 import org.apache.lucene.search.DocIdSetIterator;
 
 /**
@@ -27,7 +29,7 @@ public abstract class DocValuesSkipper {
    * Advance this skipper so that all levels contain {@code target}.
    * The behavior is undefined if {@code target} is less than or equal to {@link #maxDocID(int) maxDocID(0)}.
    */
-  public abstract void advance(int target);
+  public abstract void advance(int target) throws IOException;
 
   /**
    * Return the number of levels. This number may change when moving to a different interval.

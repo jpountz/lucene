@@ -491,7 +491,7 @@ final class SlowCompositeCodecReaderWrapper extends CodecReader {
 
     @Override
     public DocValuesSkipper getSkipper(FieldInfo field) throws IOException {
-      return MultiDocValues.getSkipper(new MultiReader(codecReaders), field.name);
+      throw new UnsupportedOperationException();
     }
   }
 
