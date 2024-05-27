@@ -97,6 +97,11 @@ public class TestSegmentToThreadMapping extends LuceneTestCase {
       }
 
       @Override
+      public DocValuesSkipper getDocValuesSkipper(String field) throws IOException {
+        return null;
+      }
+
+      @Override
       public NumericDocValues getNormValues(String field) {
         return null;
       }

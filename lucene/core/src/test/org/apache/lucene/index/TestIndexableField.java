@@ -129,6 +129,11 @@ public class TestIndexableField extends LuceneTestCase {
           public Map<String, String> getAttributes() {
             return null;
           }
+
+          @Override
+          public boolean hasDocValuesSkipIndex() {
+            return false;
+          }
         };
 
     public MyField(int counter) {

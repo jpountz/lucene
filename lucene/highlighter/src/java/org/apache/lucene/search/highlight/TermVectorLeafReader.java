@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.ByteVectorValues;
+import org.apache.lucene.index.DocValuesSkipper;
 import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
@@ -138,6 +139,11 @@ public class TermVectorLeafReader extends LeafReader {
 
   @Override
   public SortedSetDocValues getSortedSetDocValues(String field) throws IOException {
+    return null;
+  }
+
+  @Override
+  public DocValuesSkipper getDocValuesSkipper(String field) throws IOException {
     return null;
   }
 

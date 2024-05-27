@@ -1623,6 +1623,12 @@ public class MemoryIndex {
     }
 
     @Override
+    public DocValuesSkipper getDocValuesSkipper(String field) throws IOException {
+      // Skipping isn't needed on a 1-doc index.
+      return null;
+    }
+
+    @Override
     public PointValues getPointValues(String fieldName) {
       Info info = fields.get(fieldName);
       if (info == null || info.pointValues == null) {
