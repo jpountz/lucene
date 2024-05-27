@@ -32,6 +32,8 @@ import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.fst.FST.Arc;
 import org.apache.lucene.util.fst.FST.BytesReader;
+import org.apache.lucene.util.hppc.IntArrayList;
+import org.apache.lucene.util.hppc.IntCursor;
 
 /**
  * Static helper methods.
@@ -524,7 +526,7 @@ public final class Util {
     // System.out.println("toDot: startArc: " + startArc);
 
     // A list of states on the same level (for ranking).
-    final List<Integer> sameLevelStates = new ArrayList<>();
+    final IntArrayList sameLevelStates = new IntArrayList();
 
     // A bitset of already seen states (target offset).
     final BitSet seen = new BitSet();
@@ -692,8 +694,8 @@ public final class Util {
       // Emit state ranking information.
       if (sameRank && sameLevelStates.size() > 1) {
         out.write("  {rank=same; ");
-        for (int state : sameLevelStates) {
-          out.write(state + "; ");
+        for (IntCursor state : sameLevelStates) {
+          out.write(state.value + "; ");
         }
         out.write(" }\n");
       }
@@ -738,7 +740,7 @@ public final class Util {
   public static IntsRef toUTF16(CharSequence s, IntsRefBuilder scratch) {
     final int charLimit = s.length();
     scratch.setLength(charLimit);
-    scratch.grow(charLimit);
+    scratch.growNoCopy(charLimit);
     for (int idx = 0; idx < charLimit; idx++) {
       scratch.setIntAt(idx, s.charAt(idx));
     }
@@ -794,7 +796,7 @@ public final class Util {
 
   /** Just converts IntsRef to BytesRef; you must ensure the int values fit into a byte. */
   public static BytesRef toBytesRef(IntsRef input, BytesRefBuilder scratch) {
-    scratch.grow(input.length);
+    scratch.growNoCopy(input.length);
     for (int i = 0; i < input.length; i++) {
       int value = input.ints[i + input.offset];
       // NOTE: we allow -128 to 255

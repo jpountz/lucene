@@ -17,15 +17,14 @@
 package org.apache.lucene.index;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RefCount;
+import org.apache.lucene.util.hppc.LongArrayList;
+import org.apache.lucene.util.hppc.LongCursor;
+import org.apache.lucene.util.hppc.LongObjectHashMap;
 
 /**
  * Manages the {@link DocValuesProducer} held by {@link SegmentReader} and keeps track of their
@@ -33,20 +32,21 @@ import org.apache.lucene.util.RefCount;
  */
 final class SegmentDocValues {
 
-  private final Map<Long, RefCount<DocValuesProducer>> genDVProducers = new HashMap<>();
+  private final LongObjectHashMap<RefCount<DocValuesProducer>> genDVProducers =
+      new LongObjectHashMap<>();
 
   private RefCount<DocValuesProducer> newDocValuesProducer(
-      SegmentCommitInfo si, Directory dir, final Long gen, FieldInfos infos) throws IOException {
+      SegmentCommitInfo si, Directory dir, final long gen, FieldInfos infos) throws IOException {
     Directory dvDir = dir;
     String segmentSuffix = "";
-    if (gen.longValue() != -1) {
+    if (gen != -1) {
       dvDir = si.info.dir; // gen'd files are written outside CFS, so use SegInfo directory
-      segmentSuffix = Long.toString(gen.longValue(), Character.MAX_RADIX);
+      segmentSuffix = Long.toString(gen, Character.MAX_RADIX);
     }
 
     // set SegmentReadState to list only the fields that are relevant to that gen
     SegmentReadState srs =
-        new SegmentReadState(dvDir, si.info, infos, IOContext.READ, segmentSuffix);
+        new SegmentReadState(dvDir, si.info, infos, IOContext.DEFAULT, segmentSuffix);
     DocValuesFormat dvFormat = si.info.getCodec().docValuesFormat();
     return new RefCount<DocValuesProducer>(dvFormat.fieldsProducer(srs)) {
       @SuppressWarnings("synthetic-access")
@@ -75,13 +75,11 @@ final class SegmentDocValues {
   }
 
   /** Decrement the reference count of the given {@link DocValuesProducer} generations. */
-  synchronized void decRef(List<Long> dvProducersGens) throws IOException {
-    IOUtils.applyToAll(
-        dvProducersGens,
-        gen -> {
-          RefCount<DocValuesProducer> dvp = genDVProducers.get(gen);
-          assert dvp != null : "gen=" + gen;
-          dvp.decRef();
-        });
+  synchronized void decRef(LongArrayList dvProducersGens) throws IOException {
+    for (LongCursor gen : dvProducersGens) {
+      RefCount<DocValuesProducer> dvp = genDVProducers.get(gen.value);
+      assert dvp != null : "gen=" + gen;
+      dvp.decRef();
+    }
   }
 }

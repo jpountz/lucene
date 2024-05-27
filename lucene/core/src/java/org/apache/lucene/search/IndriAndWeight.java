@@ -39,7 +39,7 @@ public class IndriAndWeight extends Weight {
     this.scoreMode = scoreMode;
     weights = new ArrayList<>();
     for (BooleanClause c : query) {
-      Weight w = searcher.createWeight(c.getQuery(), scoreMode, 1.0f);
+      Weight w = searcher.createWeight(c.query(), scoreMode, 1.0f);
       weights.add(w);
     }
   }
@@ -65,21 +65,6 @@ public class IndriAndWeight extends Weight {
   }
 
   @Override
-  public Scorer scorer(LeafReaderContext context) throws IOException {
-    return getScorer(context);
-  }
-
-  @Override
-  public BulkScorer bulkScorer(LeafReaderContext context) throws IOException {
-    Scorer scorer = getScorer(context);
-    if (scorer != null) {
-      BulkScorer bulkScorer = new DefaultBulkScorer(scorer);
-      return bulkScorer;
-    }
-    return null;
-  }
-
-  @Override
   public boolean isCacheable(LeafReaderContext ctx) {
     for (Weight w : weights) {
       if (w.isCacheable(ctx) == false) return false;
@@ -100,8 +85,7 @@ public class IndriAndWeight extends Weight {
         subs.add(e);
       } else if (c.isRequired()) {
         subs.add(
-            Explanation.noMatch(
-                "no match on required clause (" + c.getQuery().toString() + ")", e));
+            Explanation.noMatch("no match on required clause (" + c.query().toString() + ")", e));
         fail = true;
       }
     }
@@ -119,5 +103,14 @@ public class IndriAndWeight extends Weight {
             "Failure to meet condition(s) of required/prohibited clause(s)", subs);
       }
     }
+  }
+
+  @Override
+  public ScorerSupplier scorerSupplier(LeafReaderContext context) throws IOException {
+    final var scorer = getScorer(context);
+    if (scorer == null) {
+      return null;
+    }
+    return new DefaultScorerSupplier(scorer);
   }
 }

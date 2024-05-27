@@ -32,6 +32,7 @@ import org.apache.lucene.util.ArrayUtil.ByteArrayComparator;
 import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.IntsRef;
 
 /**
  * Abstract class for range queries against single or multidimensional points such as {@link
@@ -186,6 +187,13 @@ public abstract class PointRangeQuery extends Query {
           }
 
           @Override
+          public void visit(IntsRef ref) {
+            for (int i = ref.offset; i < ref.offset + ref.length; i++) {
+              adder.add(ref.ints[i]);
+            }
+          }
+
+          @Override
           public void visit(int docID, byte[] packedValue) {
             if (matches(packedValue)) {
               visit(docID);
@@ -220,6 +228,14 @@ public abstract class PointRangeQuery extends Query {
           public void visit(DocIdSetIterator iterator) throws IOException {
             result.andNot(iterator);
             cost[0] = Math.max(0, cost[0] - iterator.cost());
+          }
+
+          @Override
+          public void visit(IntsRef ref) {
+            for (int i = ref.offset; i < ref.offset + ref.length; i++) {
+              result.clear(ref.ints[i]);
+            }
+            cost[0] -= ref.length;
           }
 
           @Override
@@ -299,8 +315,10 @@ public abstract class PointRangeQuery extends Query {
             int offset = i * bytesPerDim;
             if (comparator.compare(lowerPoint, offset, fieldPackedUpper, offset) > 0
                 || comparator.compare(upperPoint, offset, fieldPackedLower, offset) < 0) {
-              // If this query is a required clause of a boolean query, then returning null here will help make sure that we don't call ScorerSupplier#get on other required clauses of the same boolean query, which is an expensive operation for some queries (e.g. multi-term queries).
-              // Returning null here helps make sure that ScorerSupplier#get will not be called on other clauses.
+              // If this query is a required clause of a boolean query, then returning null here
+              // will help make sure that we don't call ScorerSupplier#get on other required clauses
+              // of the same boolean query, which is an expensive operation for some queries (e.g.
+              // multi-term queries).
               return null;
             }
           }
@@ -377,15 +395,6 @@ public abstract class PointRangeQuery extends Query {
             }
           };
         }
-      }
-
-      @Override
-      public Scorer scorer(LeafReaderContext context) throws IOException {
-        ScorerSupplier scorerSupplier = scorerSupplier(context);
-        if (scorerSupplier == null) {
-          return null;
-        }
-        return scorerSupplier.get(Long.MAX_VALUE);
       }
 
       @Override

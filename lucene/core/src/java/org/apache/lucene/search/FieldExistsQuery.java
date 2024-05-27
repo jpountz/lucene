@@ -128,12 +128,13 @@ public class FieldExistsQuery extends Query {
           break;
         }
       } else if (fieldInfo.getVectorDimension() != 0) { // the field indexes vectors
-        int numVectors =
+        DocIdSetIterator vectorValues =
             switch (fieldInfo.getVectorEncoding()) {
-              case FLOAT32 -> leaf.getFloatVectorValues(field).size();
-              case BYTE -> leaf.getByteVectorValues(field).size();
+              case FLOAT32 -> leaf.getFloatVectorValues(field);
+              case BYTE -> leaf.getByteVectorValues(field);
             };
-        if (numVectors != leaf.maxDoc()) {
+        assert vectorValues != null : "unexpected null vector values";
+        if (vectorValues != null && vectorValues.cost() != leaf.maxDoc()) {
           allReadersRewritable = false;
           break;
         }
@@ -168,8 +169,9 @@ public class FieldExistsQuery extends Query {
   @Override
   public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) {
     return new ConstantScoreWeight(this, boost) {
+
       @Override
-      public Scorer scorer(LeafReaderContext context) throws IOException {
+      public ScorerSupplier scorerSupplier(LeafReaderContext context) throws IOException {
         FieldInfos fieldInfos = context.reader().getFieldInfos();
         FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
         DocIdSetIterator iterator = null;
@@ -215,7 +217,8 @@ public class FieldExistsQuery extends Query {
         if (iterator == null) {
           return null;
         }
-        return new ConstantScoreScorer(this, score(), scoreMode, iterator);
+        final var scorer = new ConstantScoreScorer(this, score(), scoreMode, iterator);
+        return new DefaultScorerSupplier(scorer);
       }
 
       @Override
