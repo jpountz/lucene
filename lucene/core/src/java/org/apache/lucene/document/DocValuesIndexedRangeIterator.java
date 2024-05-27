@@ -29,7 +29,14 @@ import org.apache.lucene.search.TwoPhaseIterator;
 final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
 
   private enum Match {
-    NO, MAYBE, YES;
+    /** None of the documents in the range match */
+    NO,
+    /** Document values need to be checked to verify matches */
+    MAYBE,
+    /** All documents in the range that have a value match */
+    IF_DOC_HAS_VALUE,
+    /** All docs in the range match */
+    YES;
   }
 
   private final Approximation approximation;
@@ -93,9 +100,11 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
             nextLevel++;
           }
 
-          if (match == Match.YES) {
+          switch (match) {
+          case YES:
             return doc = target;
-          } else if (match == Match.MAYBE) {
+          case MAYBE:
+          case IF_DOC_HAS_VALUE:
             if (target > innerApproximation.docID()) {
               target = innerApproximation.advance(target);
             }
@@ -104,11 +113,15 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
             }
             // Otherwise we are breaking the invariant that `doc` must always be <= upTo, so let the
             // loop run one more iteration to advance the skipper.
-          } else {
+            break;
+          case NO:
             if (upTo == DocIdSetIterator.NO_MORE_DOCS) {
               return doc = NO_MORE_DOCS;
             }
             target = upTo + 1;
+            break;
+          default:
+            throw new AssertionError("Unknown enum constant: " + match);
           }
         }
       }
@@ -124,9 +137,12 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
       long maxValue = skipper.maxValue(level);
       if (minValue > upperValue || maxValue < lowerValue) {
         return Match.NO;
-      } else if (minValue >= lowerValue && maxValue <= upperValue
-          && skipper.docCount(level) == skipper.maxDocID(level) - skipper.minDocID(level) + 1) {
-        return Match.YES;
+      } else if (minValue >= lowerValue && maxValue <= upperValue) {
+        if (skipper.docCount(level) == skipper.maxDocID(level) - skipper.minDocID(level) + 1) {
+          return Match.YES;
+        } else {
+          return Match.IF_DOC_HAS_VALUE;
+        }
       } else {
         return Match.MAYBE;
       }
@@ -137,8 +153,9 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
   public final boolean matches() throws IOException {
     return switch(approximation.match) {
     case YES -> true;
-    case NO -> throw new IllegalStateException("Unpositioned approximation");
+    case IF_DOC_HAS_VALUE -> true;
     case MAYBE -> innerTwoPhase.matches();
+    case NO -> throw new IllegalStateException("Unpositioned approximation");
     };
   }
 
