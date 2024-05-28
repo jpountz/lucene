@@ -39,7 +39,6 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.IntFunction;
-
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.CorruptIndexException;
@@ -99,7 +98,6 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
 
       OneField field = new OneField();
       fields.put(fieldName, field);
-
 
       readLine();
       assert startsWith(TYPE) : scratch.get().utf8ToString();
@@ -844,59 +842,61 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
 
   @Override
   public DocValuesSkipper getSkipper(FieldInfo fieldInfo) {
-    final boolean numeric = fieldInfo.getDocValuesType() == DocValuesType.NUMERIC || fieldInfo.getDocValuesType() == DocValuesType.SORTED_NUMERIC;
+    final boolean numeric =
+        fieldInfo.getDocValuesType() == DocValuesType.NUMERIC
+            || fieldInfo.getDocValuesType() == DocValuesType.SORTED_NUMERIC;
     final OneField field = fields.get(fieldInfo.name);
 
     // SegmentCoreReaders already verifies this field is
     // valid:
     assert field != null;
     return new DocValuesSkipper() {
-      
+
       @Override
       public int numLevels() {
         return 1;
       }
-      
+
       @Override
       public long minValue() {
         return numeric ? field.minValue : 0;
       }
-      
+
       @Override
       public long minValue(int level) {
         return minValue();
       }
-      
+
       @Override
       public int minDocID(int level) {
         return 0;
       }
-      
+
       @Override
       public long maxValue() {
         return numeric ? field.maxValue : field.numValues - 1;
       }
-      
+
       @Override
       public long maxValue(int level) {
         return maxValue();
       }
-      
+
       @Override
       public int maxDocID(int level) {
         return DocIdSetIterator.NO_MORE_DOCS;
       }
-      
+
       @Override
       public int docCount() {
         return field.docCount;
       }
-      
+
       @Override
       public int docCount(int level) {
         return docCount();
       }
-      
+
       @Override
       public void advance(int target) {
         // no-op

@@ -76,8 +76,8 @@ public abstract class DocValuesProducer implements Closeable {
 
   /**
    * Returns a {@link DocValuesSkipper} for this field. The returned instance need not be
-   * thread-safe: it will only be used by a single thread. The return value is undefined if
-   * {@link FieldInfo#hasDocValuesSkipIndex()} doesn't return {@code true}.
+   * thread-safe: it will only be used by a single thread. The return value is undefined if {@link
+   * FieldInfo#hasDocValuesSkipIndex()} doesn't return {@code true}.
    */
   public abstract DocValuesSkipper getSkipper(FieldInfo field) throws IOException;
 

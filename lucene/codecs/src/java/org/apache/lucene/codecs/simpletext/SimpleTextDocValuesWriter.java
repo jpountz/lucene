@@ -428,7 +428,7 @@ class SimpleTextDocValuesWriter extends DocValuesConsumer {
     SimpleTextUtil.write(data, DOCCOUNT);
     SimpleTextUtil.write(data, Integer.toString(docCount), scratch);
     SimpleTextUtil.writeNewline(data);
-    
+
     long valueCount = 0;
     int maxLength = 0;
     TermsEnum terms = valuesProducer.getSortedSet(field).termsEnum();

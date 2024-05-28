@@ -513,7 +513,10 @@ public class FieldType implements IndexableFieldType {
   }
 
   /**
-   * Set whether to enable a skip index for doc values on this field. This is typically useful on fields that are part of the {@link IndexWriterConfig#setIndexSort index sort}, or that correlate with fields that are part of the index sort, so that values can be expected to be clustered in the doc ID space.
+   * Set whether to enable a skip index for doc values on this field. This is typically useful on
+   * fields that are part of the {@link IndexWriterConfig#setIndexSort index sort}, or that
+   * correlate with fields that are part of the index sort, so that values can be expected to be
+   * clustered in the doc ID space.
    */
   public void setDocValuesSkipIndex(boolean docValuesSkipIndex) {
     checkIfFrozen();

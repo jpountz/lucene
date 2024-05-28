@@ -203,7 +203,9 @@ public abstract non-sealed class LeafReader extends IndexReader {
   public abstract NumericDocValues getNormValues(String field) throws IOException;
 
   /**
-   * Returns a {@link DocValuesSkipper} allowing skipping ranges of doc IDs that are not of interest, or {@code null} if a skip index was not indexed. The returned instance should be confined to the thread that created it.
+   * Returns a {@link DocValuesSkipper} allowing skipping ranges of doc IDs that are not of
+   * interest, or {@code null} if a skip index was not indexed. The returned instance should be
+   * confined to the thread that created it.
    */
   public abstract DocValuesSkipper getDocValuesSkipper(String field) throws IOException;
 

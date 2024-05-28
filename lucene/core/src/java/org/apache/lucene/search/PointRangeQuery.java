@@ -340,7 +340,7 @@ public abstract class PointRangeQuery extends Query {
         } else {
           allDocsMatch = false;
         }
-        
+
         final Weight weight = this;
         if (allDocsMatch) {
           // all docs have a value and all points are within bounds, so everything matches

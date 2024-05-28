@@ -17,7 +17,6 @@
 package org.apache.lucene.document;
 
 import java.io.IOException;
-
 import org.apache.lucene.index.DocValuesSkipper;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.TwoPhaseIterator;
@@ -42,7 +41,8 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
   private final Approximation approximation;
   private final TwoPhaseIterator innerTwoPhase;
 
-  DocValuesIndexedRangeIterator(TwoPhaseIterator twoPhase, DocValuesSkipper skipper, long lowerValue, long upperValue) {
+  DocValuesIndexedRangeIterator(
+      TwoPhaseIterator twoPhase, DocValuesSkipper skipper, long lowerValue, long upperValue) {
     super(new Approximation(twoPhase.approximation(), skipper, lowerValue, upperValue));
     this.approximation = (Approximation) approximation();
     this.innerTwoPhase = twoPhase;
@@ -61,7 +61,11 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
     private Match match = Match.MAYBE;
     private int upTo = -1;
 
-    Approximation(DocIdSetIterator innerApproximation, DocValuesSkipper skipper, long lowerValue, long upperValue) {
+    Approximation(
+        DocIdSetIterator innerApproximation,
+        DocValuesSkipper skipper,
+        long lowerValue,
+        long upperValue) {
       this.innerApproximation = innerApproximation;
       this.skipper = skipper;
       this.lowerValue = lowerValue;
@@ -95,33 +99,36 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
           // If we have a YES or NO decision, see if we still have the same decision on a higher
           // level (= on a wider range of doc IDs)
           int nextLevel = 1;
-          while (match != Match.MAYBE && nextLevel < skipper.numLevels() && match == match(nextLevel)) {
+          while (match != Match.MAYBE
+              && nextLevel < skipper.numLevels()
+              && match == match(nextLevel)) {
             upTo = skipper.maxDocID(nextLevel);
             nextLevel++;
           }
 
           switch (match) {
-          case YES:
-            return doc = target;
-          case MAYBE:
-          case IF_DOC_HAS_VALUE:
-            if (target > innerApproximation.docID()) {
-              target = innerApproximation.advance(target);
-            }
-            if (target <= upTo) {
+            case YES:
               return doc = target;
-            }
-            // Otherwise we are breaking the invariant that `doc` must always be <= upTo, so let the
-            // loop run one more iteration to advance the skipper.
-            break;
-          case NO:
-            if (upTo == DocIdSetIterator.NO_MORE_DOCS) {
-              return doc = NO_MORE_DOCS;
-            }
-            target = upTo + 1;
-            break;
-          default:
-            throw new AssertionError("Unknown enum constant: " + match);
+            case MAYBE:
+            case IF_DOC_HAS_VALUE:
+              if (target > innerApproximation.docID()) {
+                target = innerApproximation.advance(target);
+              }
+              if (target <= upTo) {
+                return doc = target;
+              }
+              // Otherwise we are breaking the invariant that `doc` must always be <= upTo, so let
+              // the
+              // loop run one more iteration to advance the skipper.
+              break;
+            case NO:
+              if (upTo == DocIdSetIterator.NO_MORE_DOCS) {
+                return doc = NO_MORE_DOCS;
+              }
+              target = upTo + 1;
+              break;
+            default:
+              throw new AssertionError("Unknown enum constant: " + match);
           }
         }
       }
@@ -151,11 +158,11 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
 
   @Override
   public final boolean matches() throws IOException {
-    return switch(approximation.match) {
-    case YES -> true;
-    case IF_DOC_HAS_VALUE -> true;
-    case MAYBE -> innerTwoPhase.matches();
-    case NO -> throw new IllegalStateException("Unpositioned approximation");
+    return switch (approximation.match) {
+      case YES -> true;
+      case IF_DOC_HAS_VALUE -> true;
+      case MAYBE -> innerTwoPhase.matches();
+      case NO -> throw new IllegalStateException("Unpositioned approximation");
     };
   }
 

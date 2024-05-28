@@ -153,7 +153,9 @@ final class SortedSetDocValuesRangeQuery extends Query {
             }
 
             // no terms matched in this segment
-            if (minOrd > maxOrd || (skipper != null && (minOrd > skipper.maxValue() || maxOrd < skipper.minValue()))) {
+            if (minOrd > maxOrd
+                || (skipper != null
+                    && (minOrd > skipper.maxValue() || maxOrd < skipper.minValue()))) {
               return new ConstantScoreScorer(weight, score(), scoreMode, DocIdSetIterator.empty());
             }
 
