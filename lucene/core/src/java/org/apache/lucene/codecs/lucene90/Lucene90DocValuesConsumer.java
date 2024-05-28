@@ -223,7 +223,7 @@ final class Lucene90DocValuesConsumer extends DocValuesConsumer {
   
   private void writeSkipIndex(FieldInfo field, SortedNumericDocValues values) throws IOException {
     assert field.hasDocValuesSkipIndex();
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "rawtypes"})
     List<SkipAccumulator>[] accumulators = new List[SKIP_INDEX_MAX_LEVEL];
     for (int i = 0; i < accumulators.length; ++i) {
       accumulators[i] = new ArrayList<>();

@@ -50,7 +50,7 @@ public abstract class DocValuesSkipper {
   /**
    * Return the minimum value at the given level, inclusive.
    *
-   * <p><b>NOTE<b>: It is only guaranteed that values in this interval are greater than or equal the
+   * <p><b>NOTE</b>: It is only guaranteed that values in this interval are greater than or equal the
    * returned value. There is no guarantee that one document actually has this value.
    */
   public abstract long minValue(int level);
@@ -58,7 +58,7 @@ public abstract class DocValuesSkipper {
   /**
    * Return the maximum value at the given level, inclusive.
    *
-   * <p><b>NOTE<b>: It is only guaranteed that values in this interval are less than or equal the
+   * <p><b>NOTE</b>: It is only guaranteed that values in this interval are less than or equal the
    * returned value. There is no guarantee that one document actually has this value.
    */
   public abstract long maxValue(int level);
@@ -72,7 +72,7 @@ public abstract class DocValuesSkipper {
   /**
    * Return the global minimum value.
    *
-   * <p><b>NOTE<b>: It is only guaranteed that values are greater than or equal the returned value.
+   * <p><b>NOTE</b>: It is only guaranteed that values are greater than or equal the returned value.
    * There is no guarantee that one document actually has this value.
    */
   public abstract long minValue();
@@ -80,7 +80,7 @@ public abstract class DocValuesSkipper {
   /**
    * Return the global maximum value.
    *
-   * <p><b>NOTE<b>: It is only guaranteed that values are greater than or equal the returned value.
+   * <p><b>NOTE</b>: It is only guaranteed that values are greater than or equal the returned value.
    * There is no guarantee that one document actually has this value.
    */
   public abstract long maxValue();
