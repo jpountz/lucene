@@ -25,9 +25,9 @@ import org.apache.lucene.search.TwoPhaseIterator;
  * Wrapper around a {@link TwoPhaseIterator} for a doc-values range query that speeds things up by
  * taking advantage of a {@link DocValuesSkipper}.
  */
-final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
+final class DocValuesRangeIterator extends TwoPhaseIterator {
 
-  private enum Match {
+  enum Match {
     /** None of the documents in the range match */
     NO,
     /** Document values need to be checked to verify matches */
@@ -41,14 +41,14 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
   private final Approximation approximation;
   private final TwoPhaseIterator innerTwoPhase;
 
-  DocValuesIndexedRangeIterator(
+  DocValuesRangeIterator(
       TwoPhaseIterator twoPhase, DocValuesSkipper skipper, long lowerValue, long upperValue) {
     super(new Approximation(twoPhase.approximation(), skipper, lowerValue, upperValue));
     this.approximation = (Approximation) approximation();
     this.innerTwoPhase = twoPhase;
   }
 
-  private static class Approximation extends DocIdSetIterator {
+  static class Approximation extends DocIdSetIterator {
 
     private final DocIdSetIterator innerApproximation;
     private final DocValuesSkipper skipper;
@@ -58,8 +58,8 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
     private int doc = -1;
 
     // Track a decision for all doc IDs between the current doc ID and upTo inclusive.
-    private Match match = Match.MAYBE;
-    private int upTo = -1;
+    Match match = Match.MAYBE;
+    int upTo = -1;
 
     Approximation(
         DocIdSetIterator innerApproximation,
@@ -105,31 +105,30 @@ final class DocValuesIndexedRangeIterator extends TwoPhaseIterator {
             upTo = skipper.maxDocID(nextLevel);
             nextLevel++;
           }
-
-          switch (match) {
-            case YES:
+        }
+        switch (match) {
+          case YES:
+            return doc = target;
+          case MAYBE:
+          case IF_DOC_HAS_VALUE:
+            if (target > innerApproximation.docID()) {
+              target = innerApproximation.advance(target);
+            }
+            if (target <= upTo) {
               return doc = target;
-            case MAYBE:
-            case IF_DOC_HAS_VALUE:
-              if (target > innerApproximation.docID()) {
-                target = innerApproximation.advance(target);
-              }
-              if (target <= upTo) {
-                return doc = target;
-              }
-              // Otherwise we are breaking the invariant that `doc` must always be <= upTo, so let
-              // the
-              // loop run one more iteration to advance the skipper.
-              break;
-            case NO:
-              if (upTo == DocIdSetIterator.NO_MORE_DOCS) {
-                return doc = NO_MORE_DOCS;
-              }
-              target = upTo + 1;
-              break;
-            default:
-              throw new AssertionError("Unknown enum constant: " + match);
-          }
+            }
+            // Otherwise we are breaking the invariant that `doc` must always be <= upTo, so let
+            // the
+            // loop run one more iteration to advance the skipper.
+            break;
+          case NO:
+            if (upTo == DocIdSetIterator.NO_MORE_DOCS) {
+              return doc = NO_MORE_DOCS;
+            }
+            target = upTo + 1;
+            break;
+          default:
+            throw new AssertionError("Unknown enum constant: " + match);
         }
       }
     }

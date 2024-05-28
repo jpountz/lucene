@@ -1166,7 +1166,8 @@ public class AssertingLeafReader extends FilterLeafReader {
     @Override
     public void advance(int target) throws IOException {
       assertThread("Doc values skipper", creationThread);
-      assert target > maxDocID(0) : "Illegal to call advance() on a target that is not beyond the current interval";
+      assert target > maxDocID(0)
+          : "Illegal to call advance() on a target that is not beyond the current interval";
       in.advance(target);
       assert in.minDocID(0) <= in.maxDocID(0);
     }
@@ -1248,7 +1249,6 @@ public class AssertingLeafReader extends FilterLeafReader {
       assertThread("Doc values skipper", creationThread);
       return in.docCount();
     }
-
   }
 
   /** Wraps a SortedSetDocValues but with additional asserts */
