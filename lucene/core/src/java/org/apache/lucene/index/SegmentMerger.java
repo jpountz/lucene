@@ -51,6 +51,7 @@ final class SegmentMerger {
   private final IOContext context;
 
   final MergeState mergeState;
+  final Thread mergeStateCreationThread;
   private final FieldInfos.Builder fieldInfosBuilder;
 
   // note, just like in codec apis Directory 'dir' is NOT the same as segmentInfo.dir!!
@@ -68,6 +69,7 @@ final class SegmentMerger {
           "IOContext.context should be MERGE; got: " + context.context());
     }
     mergeState = new MergeState(readers, segmentInfo, infoStream, intraMergeTaskExecutor);
+    mergeStateCreationThread = Thread.currentThread();
     directory = dir;
     this.codec = segmentInfo.getCodec();
     this.context = context;
@@ -97,6 +99,16 @@ final class SegmentMerger {
   /** True if any merging should happen */
   boolean shouldMerge() {
     return mergeState.segmentInfo.maxDoc() > 0;
+  }
+
+  private MergeState mergeState() {
+    MergeState mergeState = this.mergeState;
+    if (Thread.currentThread() != mergeStateCreationThread) {
+      // Most merges, e.g. small merges, run in the same thread, so save the cost of pulling a clone
+      // in that case.
+      mergeState = mergeState.clone();
+    }
+    return mergeState;
   }
 
   /**
@@ -137,15 +149,25 @@ final class SegmentMerger {
 
     TaskExecutor taskExecutor = new TaskExecutor(mergeState.intraMergeTaskExecutor);
     List<Callable<Void>> mergingTasks = new ArrayList<>();
-    if (mergeState.mergeFieldInfos.hasNorms()) {
-      mergeWithLogging(this::mergeNorms, segmentWriteState, segmentReadState, "norms", numMerged);
-    }
+    mergingTasks.add(
+        () -> {
+          if (mergeState.mergeFieldInfos.hasNorms()) {
+            mergeWithLogging(
+                this::mergeNorms, segmentWriteState, segmentReadState, "norms", numMerged);
+          }
 
-    mergeWithLogging(this::mergeTerms, segmentWriteState, segmentReadState, "postings", numMerged);
+          mergeWithLogging(
+              this::mergeTerms, segmentWriteState, segmentReadState, "postings", numMerged);
+          return null;
+        });
 
     if (mergeState.mergeFieldInfos.hasDocValues()) {
-      mergeWithLogging(
-          this::mergeDocValues, segmentWriteState, segmentReadState, "doc values", numMerged);
+      mergingTasks.add(
+          () -> {
+            mergeWithLogging(
+                this::mergeDocValues, segmentWriteState, segmentReadState, "doc values", numMerged);
+            return null;
+          });
     }
 
     if (mergeState.mergeFieldInfos.hasPointValues()) {
@@ -191,6 +213,7 @@ final class SegmentMerger {
 
   private void mergeDocValues(
       SegmentWriteState segmentWriteState, SegmentReadState segmentReadState) throws IOException {
+    MergeState mergeState = mergeState();
     try (DocValuesConsumer consumer = codec.docValuesFormat().fieldsConsumer(segmentWriteState)) {
       consumer.merge(mergeState);
     }
@@ -198,6 +221,7 @@ final class SegmentMerger {
 
   private void mergePoints(SegmentWriteState segmentWriteState, SegmentReadState segmentReadState)
       throws IOException {
+    MergeState mergeState = mergeState();
     try (PointsWriter writer = codec.pointsFormat().fieldsWriter(segmentWriteState)) {
       writer.merge(mergeState);
     }
@@ -205,6 +229,7 @@ final class SegmentMerger {
 
   private void mergeNorms(SegmentWriteState segmentWriteState, SegmentReadState segmentReadState)
       throws IOException {
+    MergeState mergeState = mergeState();
     try (NormsConsumer consumer = codec.normsFormat().normsConsumer(segmentWriteState)) {
       consumer.merge(mergeState);
     }
@@ -212,6 +237,7 @@ final class SegmentMerger {
 
   private void mergeTerms(SegmentWriteState segmentWriteState, SegmentReadState segmentReadState)
       throws IOException {
+    MergeState mergeState = mergeState();
     try (NormsProducer norms =
         mergeState.mergeFieldInfos.hasNorms()
             ? codec.normsFormat().normsProducer(segmentReadState)
@@ -246,6 +272,7 @@ final class SegmentMerger {
    * @throws IOException if there is a low-level IO error
    */
   private int mergeFields() throws IOException {
+    MergeState mergeState = mergeState();
     try (StoredFieldsWriter fieldsWriter =
         codec.storedFieldsFormat().fieldsWriter(directory, mergeState.segmentInfo, context)) {
       return fieldsWriter.merge(mergeState);
@@ -258,6 +285,7 @@ final class SegmentMerger {
    * @throws IOException if there is a low-level IO error
    */
   private int mergeTermVectors() throws IOException {
+    MergeState mergeState = mergeState();
     try (TermVectorsWriter termVectorsWriter =
         codec.termVectorsFormat().vectorsWriter(directory, mergeState.segmentInfo, context)) {
       int numMerged = termVectorsWriter.merge(mergeState);
@@ -268,6 +296,7 @@ final class SegmentMerger {
 
   private void mergeVectorValues(
       SegmentWriteState segmentWriteState, SegmentReadState segmentReadState) throws IOException {
+    MergeState mergeState = mergeState();
     try (KnnVectorsWriter writer = codec.knnVectorsFormat().fieldsWriter(segmentWriteState)) {
       writer.merge(mergeState);
     }

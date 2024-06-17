@@ -308,7 +308,6 @@ public class TestIndexWriterForceMerge extends LuceneTestCase {
     dir.close();
   }
 
-  @AwaitsFix(bugUrl = "https://github.com/apache/lucene/issues/13478")
   public void testMergePerField() throws IOException {
     IndexWriterConfig config = new IndexWriterConfig();
     ConcurrentMergeScheduler mergeScheduler =
