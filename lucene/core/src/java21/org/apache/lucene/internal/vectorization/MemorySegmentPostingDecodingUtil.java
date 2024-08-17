@@ -72,14 +72,18 @@ final class MemorySegmentPostingDecodingUtil extends PostingDecodingUtil {
       vector.lanewise(VectorOperators.AND, cMask).intoArray(c, cIndex + i);
     }
 
+    doTail(count, b, bShift, dec, bMask, c, cIndex, cMask, maxIter, endOffset);
+
+    in.seek(endOffset);
+  }
+
+  private void doTail(int count, long[] b, int bShift, int dec, long bMask, long[] c, int cIndex, long cMask, int maxIter, long endOffset) {
     // Handle the tail by reading a vector that is aligned with `count` on the right side.
     int i = count - LONG_SPECIES.length();
-    offset = endOffset - LONG_SPECIES.length() * Long.BYTES;
+    long offset = endOffset - LONG_SPECIES.length() * Long.BYTES;
     LongVector vector =
         LongVector.fromMemorySegment(LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
     shift(vector, bShift, dec, maxIter, bMask, b, count, i);
     vector.lanewise(VectorOperators.AND, cMask).intoArray(c, cIndex + i);
-
-    in.seek(endOffset);
   }
 }

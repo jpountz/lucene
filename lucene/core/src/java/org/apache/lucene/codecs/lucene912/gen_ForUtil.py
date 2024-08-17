@@ -287,7 +287,8 @@ def writeDecode(bpv, f):
     next_primitive = 8
   elif bpv <= 16:
     next_primitive = 16
-  f.write('  static void decode%d(PostingDecodingUtil pdu, long[] tmp, long[] longs) throws IOException {\n' %bpv)
+  f.write('  private static void decode%d(PostingDecodingUtil pdu, long[] tmp, long[] longs) throws IOException {\n' %bpv)
+  has_remainder = False
   if bpv == next_primitive:
     f.write('    pdu.in.readLongs(longs, 0, %d);\n' %(bpv*2))
   else:
@@ -299,8 +300,16 @@ def writeDecode(bpv, f):
       f.write('    pdu.splitLongs(%d, longs, %d, %d, MASK%d_%d, longs, %d, MASK%d_%d);\n' %(bpv*2, next_primitive - bpv, bpv, next_primitive, bpv, o, next_primitive, next_primitive - num_iters * bpv))
     else:
       f.write('    pdu.splitLongs(%d, longs, %d, %d, MASK%d_%d, tmp, 0, MASK%d_%d);\n' %(bpv*2, next_primitive - bpv, bpv, next_primitive, bpv, next_primitive, next_primitive - num_iters * bpv))
-      writeRemainder(bpv, next_primitive, remaining_bits, o, 128/num_values_per_long - o, f)
+      f.write('    decode%dTo%dRemainder(tmp, longs);' %(bpv, next_primitive))
+      has_remainder = True
+  f.write('    expand%d(longs);\n' %next_primitive)
   f.write('  }\n')
+
+  if has_remainder:
+    f.write('\n')
+    f.write('  static void decode%dTo%dRemainder(long[] tmp, long[] longs) throws IOException {\n' %(bpv, next_primitive))
+    writeRemainder(bpv, next_primitive, remaining_bits, o, 128/num_values_per_long - o, f)
+    f.write('  }\n')
 
 if __name__ == '__main__':
   f = open(OUTPUT_FILE, 'w')
@@ -335,7 +344,6 @@ if __name__ == '__main__':
       next_primitive = 16
     f.write('      case %d:\n' %bpv)
     f.write('        decode%d(pdu, tmp, longs);\n' %bpv)
-    f.write('        expand%d(longs);\n' %next_primitive)
     f.write('        break;\n')
   f.write('      default:\n')
   f.write('        decodeSlow(bitsPerValue, pdu, tmp, longs);\n')
