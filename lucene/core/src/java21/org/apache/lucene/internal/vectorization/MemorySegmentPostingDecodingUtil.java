@@ -46,6 +46,25 @@ final class MemorySegmentPostingDecodingUtil extends PostingDecodingUtil {
     }
   }
 
+  private static void splitVector(
+      MemorySegment memorySegment,
+      long offset,
+      int count,
+      long[] b,
+      int bShift,
+      int dec,
+      int maxIter,
+      long bMask,
+      long[] c,
+      int cIndex,
+      long cMask,
+      int i) {
+    LongVector vector =
+        LongVector.fromMemorySegment(LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
+    shift(vector, bShift, dec, maxIter, bMask, b, count, i);
+    vector.lanewise(VectorOperators.AND, cMask).intoArray(c, cIndex + i);
+  }
+
   @Override
   public void splitLongs(
       int count, long[] b, int bShift, int dec, long bMask, long[] c, int cIndex, long cMask)
@@ -65,25 +84,24 @@ final class MemorySegmentPostingDecodingUtil extends PostingDecodingUtil {
     for (int i = 0;
         i < loopBound;
         i += LONG_SPECIES.length(), offset += LONG_SPECIES.length() * Long.BYTES) {
-      LongVector vector =
-          LongVector.fromMemorySegment(
-              LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
-      shift(vector, bShift, dec, maxIter, bMask, b, count, i);
-      vector.lanewise(VectorOperators.AND, cMask).intoArray(c, cIndex + i);
+      splitVector(
+          memorySegment, offset, count, b, bShift, dec, maxIter, bMask, c, cIndex, cMask, i);
     }
 
-    doTail(count, b, bShift, dec, bMask, c, cIndex, cMask, maxIter, endOffset);
+    splitVector(
+        memorySegment,
+        endOffset - LONG_SPECIES.length() * Long.BYTES,
+        count,
+        b,
+        bShift,
+        dec,
+        maxIter,
+        bMask,
+        c,
+        cIndex,
+        cMask,
+        count - LONG_SPECIES.length());
 
     in.seek(endOffset);
-  }
-
-  private void doTail(int count, long[] b, int bShift, int dec, long bMask, long[] c, int cIndex, long cMask, int maxIter, long endOffset) {
-    // Handle the tail by reading a vector that is aligned with `count` on the right side.
-    int i = count - LONG_SPECIES.length();
-    long offset = endOffset - LONG_SPECIES.length() * Long.BYTES;
-    LongVector vector =
-        LongVector.fromMemorySegment(LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
-    shift(vector, bShift, dec, maxIter, bMask, b, count, i);
-    vector.lanewise(VectorOperators.AND, cMask).intoArray(c, cIndex + i);
   }
 }
