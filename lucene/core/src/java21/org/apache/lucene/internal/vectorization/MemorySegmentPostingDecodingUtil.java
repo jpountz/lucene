@@ -36,71 +36,184 @@ final class MemorySegmentPostingDecodingUtil extends PostingDecodingUtil {
     this.memorySegment = memorySegment;
   }
 
-  private static void shift(
-      LongVector vector, int bShift, int dec, int maxIter, long bMask, long[] b, int count, int i) {
-    for (int j = 0; j <= maxIter; ++j) {
-      vector
-          .lanewise(VectorOperators.LSHR, bShift - j * dec)
-          .lanewise(VectorOperators.AND, bMask)
-          .intoArray(b, count * j + i);
-    }
-  }
-
-  private static void splitVector(
-      MemorySegment memorySegment,
-      long offset,
-      int count,
-      long[] b,
-      int bShift,
-      int dec,
-      int maxIter,
-      long bMask,
-      long[] c,
-      int cIndex,
-      long cMask,
-      int i) {
-    LongVector vector =
-        LongVector.fromMemorySegment(LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
-    shift(vector, bShift, dec, maxIter, bMask, b, count, i);
-    vector.lanewise(VectorOperators.AND, cMask).intoArray(c, cIndex + i);
-  }
-
   @Override
-  public void splitLongs(
-      int count, long[] b, int bShift, int dec, long bMask, long[] c, int cIndex, long cMask)
+  public void splitLongs1(
+      int count, long[] b, int bShift, long bMask, long[] c, int cIndex, long cMask)
       throws IOException {
     if (count < LONG_SPECIES.length()) {
       // Not enough data to vectorize without going out-of-bounds. In practice, this branch is never
       // used if the bit width is 256, and is used for 2 and 3 bits per value if the bit width is
       // 512.
-      super.splitLongs(count, b, bShift, dec, bMask, c, cIndex, cMask);
+      super.splitLongs1(count, b, bShift, bMask, c, cIndex, cMask);
       return;
     }
 
-    int maxIter = (bShift - 1) / dec;
     long offset = in.getFilePointer();
     long endOffset = offset + count * Long.BYTES;
+
+    LongVector bShiftVector = LongVector.broadcast(LONG_SPECIES, bShift);
+    LongVector bMaskVector = LongVector.broadcast(LONG_SPECIES, bMask);
+    LongVector cMaskVector = LongVector.broadcast(LONG_SPECIES, cMask);
+    
     int loopBound = LONG_SPECIES.loopBound(count - 1);
     for (int i = 0;
         i < loopBound;
         i += LONG_SPECIES.length(), offset += LONG_SPECIES.length() * Long.BYTES) {
-      splitVector(
-          memorySegment, offset, count, b, bShift, dec, maxIter, bMask, c, cIndex, cMask, i);
+      LongVector vector =
+          LongVector.fromMemorySegment(
+              LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
+      vector
+          .lanewise(VectorOperators.LSHR, bShiftVector)
+          .lanewise(VectorOperators.AND, bMaskVector)
+          .intoArray(b, i);
+      vector.lanewise(VectorOperators.AND, cMaskVector).intoArray(c, cIndex + i);
     }
 
-    splitVector(
-        memorySegment,
-        endOffset - LONG_SPECIES.length() * Long.BYTES,
-        count,
-        b,
-        bShift,
-        dec,
-        maxIter,
-        bMask,
-        c,
-        cIndex,
-        cMask,
-        count - LONG_SPECIES.length());
+    int i = count - LONG_SPECIES.length();
+    LongVector vector =
+        LongVector.fromMemorySegment(
+            LONG_SPECIES,
+            memorySegment,
+            endOffset - LONG_SPECIES.length() * Long.BYTES,
+            ByteOrder.LITTLE_ENDIAN);
+    vector
+        .lanewise(VectorOperators.LSHR, bShiftVector)
+        .lanewise(VectorOperators.AND, bMaskVector)
+        .intoArray(b, i);
+    vector.lanewise(VectorOperators.AND, cMaskVector).intoArray(c, cIndex + i);
+
+    in.seek(endOffset);
+  }
+
+  @Override
+  public void splitLongs2(
+      int count, long[] b, int bShift1, int bShift2, long bMask, long[] c, int cIndex, long cMask)
+      throws IOException {
+    if (count < LONG_SPECIES.length()) {
+      // Not enough data to vectorize without going out-of-bounds. In practice, this branch is never
+      // used if the bit width is 256, and is used for 2 and 3 bits per value if the bit width is
+      // 512.
+      super.splitLongs2(count, b, bShift1, bShift2, bMask, c, cIndex, cMask);
+      return;
+    }
+
+    long offset = in.getFilePointer();
+    long endOffset = offset + count * Long.BYTES;
+
+    LongVector bShift1Vector = LongVector.broadcast(LONG_SPECIES, bShift1);
+    LongVector bShift2Vector = LongVector.broadcast(LONG_SPECIES, bShift2);
+    LongVector bMaskVector = LongVector.broadcast(LONG_SPECIES, bMask);
+    LongVector cMaskVector = LongVector.broadcast(LONG_SPECIES, cMask);
+    
+    int loopBound = LONG_SPECIES.loopBound(count - 1);
+    for (int i = 0;
+        i < loopBound;
+        i += LONG_SPECIES.length(), offset += LONG_SPECIES.length() * Long.BYTES) {
+      LongVector vector =
+          LongVector.fromMemorySegment(
+              LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
+      vector
+          .lanewise(VectorOperators.LSHR, bShift1Vector)
+          .lanewise(VectorOperators.AND, bMaskVector)
+          .intoArray(b, i);
+      vector
+          .lanewise(VectorOperators.LSHR, bShift2Vector)
+          .lanewise(VectorOperators.AND, bMaskVector)
+          .intoArray(b, count + i);
+      vector.lanewise(VectorOperators.AND, cMaskVector).intoArray(c, cIndex + i);
+    }
+
+    int i = count - LONG_SPECIES.length();
+    LongVector vector =
+        LongVector.fromMemorySegment(
+            LONG_SPECIES,
+            memorySegment,
+            endOffset - LONG_SPECIES.length() * Long.BYTES,
+            ByteOrder.LITTLE_ENDIAN);
+    vector
+        .lanewise(VectorOperators.LSHR, bShift1Vector)
+        .lanewise(VectorOperators.AND, bMaskVector)
+        .intoArray(b, i);
+    vector
+        .lanewise(VectorOperators.LSHR, bShift2Vector)
+        .lanewise(VectorOperators.AND, bMaskVector)
+        .intoArray(b, count + i);
+    vector.lanewise(VectorOperators.AND, cMaskVector).intoArray(c, cIndex + i);
+
+    in.seek(endOffset);
+  }
+
+  @Override
+  public void splitLongs3(
+      int count,
+      long[] b,
+      int bShift1,
+      int bShift2,
+      int bShift3,
+      long bMask,
+      long[] c,
+      int cIndex,
+      long cMask)
+      throws IOException {
+    if (count < LONG_SPECIES.length()) {
+      // Not enough data to vectorize without going out-of-bounds. In practice, this branch is never
+      // used if the bit width is 256, and is used for 2 and 3 bits per value if the bit width is
+      // 512.
+      super.splitLongs3(count, b, bShift1, bShift2, bShift3, bMask, c, cIndex, cMask);
+      return;
+    }
+
+    long offset = in.getFilePointer();
+    long endOffset = offset + count * Long.BYTES;
+
+    LongVector bShift1Vector = LongVector.broadcast(LONG_SPECIES, bShift1);
+    LongVector bShift2Vector = LongVector.broadcast(LONG_SPECIES, bShift2);
+    LongVector bShift3Vector = LongVector.broadcast(LONG_SPECIES, bShift3);
+    LongVector bMaskVector = LongVector.broadcast(LONG_SPECIES, bMask);
+    LongVector cMaskVector = LongVector.broadcast(LONG_SPECIES, cMask);
+    
+    int loopBound = LONG_SPECIES.loopBound(count - 1);
+    for (int i = 0;
+        i < loopBound;
+        i += LONG_SPECIES.length(), offset += LONG_SPECIES.length() * Long.BYTES) {
+      LongVector vector =
+          LongVector.fromMemorySegment(
+              LONG_SPECIES, memorySegment, offset, ByteOrder.LITTLE_ENDIAN);
+      vector
+          .lanewise(VectorOperators.LSHR, bShift1Vector)
+          .lanewise(VectorOperators.AND, bMaskVector)
+          .intoArray(b, i);
+      vector
+          .lanewise(VectorOperators.LSHR, bShift2Vector)
+          .lanewise(VectorOperators.AND, bMaskVector)
+          .intoArray(b, count + i);
+      vector
+          .lanewise(VectorOperators.LSHR, bShift3Vector)
+          .lanewise(VectorOperators.AND, bMaskVector)
+          .intoArray(b, 2 * count + i);
+      vector.lanewise(VectorOperators.AND, cMaskVector).intoArray(c, cIndex + i);
+    }
+
+    int i = count - LONG_SPECIES.length();
+    LongVector vector =
+        LongVector.fromMemorySegment(
+            LONG_SPECIES,
+            memorySegment,
+            endOffset - LONG_SPECIES.length() * Long.BYTES,
+            ByteOrder.LITTLE_ENDIAN);
+    vector
+        .lanewise(VectorOperators.LSHR, bShift1Vector)
+        .lanewise(VectorOperators.AND, bMaskVector)
+        .intoArray(b, i);
+    vector
+        .lanewise(VectorOperators.LSHR, bShift2Vector)
+        .lanewise(VectorOperators.AND, bMaskVector)
+        .intoArray(b, count + i);
+    vector
+        .lanewise(VectorOperators.LSHR, bShift3Vector)
+        .lanewise(VectorOperators.AND, bMaskVector)
+        .intoArray(b, 2 * count + i);
+    vector.lanewise(VectorOperators.AND, cMaskVector).intoArray(c, cIndex + i);
 
     in.seek(endOffset);
   }

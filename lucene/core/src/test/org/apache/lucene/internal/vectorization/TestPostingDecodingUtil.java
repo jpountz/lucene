@@ -51,10 +51,10 @@ public class TestPostingDecodingUtil extends LuceneTestCase {
             expectedC[i] = random().nextLong();
             actualC[i] = expectedC[i];
           }
-          int bShift = TestUtil.nextInt(random(), 1, 31);
-          int dec = TestUtil.nextInt(random(), 1, bShift);
-          int numIters = (bShift + dec - 1) / dec;
-          int count = TestUtil.nextInt(random(), 1, 64 / numIters);
+          int bShift1 = TestUtil.nextInt(random(), 1, 31);
+          int bShift2 = TestUtil.nextInt(random(), 1, 31);
+          int bShift3 = TestUtil.nextInt(random(), 1, 31);
+          int count = TestUtil.nextInt(random(), 1, 64);
           long bMask = random().nextLong();
           int cIndex = random().nextInt(64);
           long cMask = random().nextLong();
@@ -69,10 +69,32 @@ public class TestPostingDecodingUtil extends LuceneTestCase {
           PostingDecodingUtil optimizedUtil = vectorizationProvider.newPostingDecodingUtil(slice);
 
           slice.seek(startFP);
-          defaultUtil.splitLongs(count, expectedB, bShift, dec, bMask, expectedC, cIndex, cMask);
+          defaultUtil.splitLongs1(count, expectedB, bShift1, bMask, expectedC, cIndex, cMask);
           long expectedEndFP = slice.getFilePointer();
           slice.seek(startFP);
-          optimizedUtil.splitLongs(count, actualB, bShift, dec, bMask, actualC, cIndex, cMask);
+          optimizedUtil.splitLongs1(count, actualB, bShift1, bMask, actualC, cIndex, cMask);
+          assertEquals(expectedEndFP, slice.getFilePointer());
+          assertArrayEquals(expectedB, actualB);
+          assertArrayEquals(expectedC, actualC);
+
+          slice.seek(startFP);
+          defaultUtil.splitLongs2(
+              count, expectedB, bShift1, bShift2, bMask, expectedC, cIndex, cMask);
+          expectedEndFP = slice.getFilePointer();
+          slice.seek(startFP);
+          optimizedUtil.splitLongs2(
+              count, actualB, bShift1, bShift2, bMask, actualC, cIndex, cMask);
+          assertEquals(expectedEndFP, slice.getFilePointer());
+          assertArrayEquals(expectedB, actualB);
+          assertArrayEquals(expectedC, actualC);
+
+          slice.seek(startFP);
+          defaultUtil.splitLongs3(
+              count, expectedB, bShift1, bShift2, bShift3, bMask, expectedC, cIndex, cMask);
+          expectedEndFP = slice.getFilePointer();
+          slice.seek(startFP);
+          optimizedUtil.splitLongs3(
+              count, actualB, bShift1, bShift2, bShift3, bMask, actualC, cIndex, cMask);
           assertEquals(expectedEndFP, slice.getFilePointer());
           assertArrayEquals(expectedB, actualB);
           assertArrayEquals(expectedC, actualC);

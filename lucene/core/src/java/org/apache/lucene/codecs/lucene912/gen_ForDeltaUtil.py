@@ -19,7 +19,7 @@ from math import gcd
 
 """Code generation for ForDeltaUtil.java"""
 
-MAX_SPECIALIZED_BITS_PER_VALUE = 24
+MAX_SPECIALIZED_BITS_PER_VALUE = 16
 OUTPUT_FILE = "ForDeltaUtil.java"
 PRIMITIVE_SIZE = [8, 16, 32]
 HEADER = """// This file has been automatically generated, DO NOT EDIT
@@ -366,27 +366,45 @@ def writeRemainder(bpv, next_primitive, remaining_bits_per_long, o, num_values, 
   
 def writeDecode(bpv, f):
   primitive_size = primitive_size_for_bpv(bpv)
-  has_remainder = False
   f.write('  private static void decodeAndPrefixSum%d(PostingDecodingUtil pdu, long[] tmp, long[] longs, long base) throws IOException {\n' %bpv)
+
+  remaining_bits = primitive_size % bpv
   if bpv == primitive_size:
     f.write('    pdu.in.readLongs(longs, 0, %d);\n' %(bpv*2))
   else:
     num_values_per_long = 64 / primitive_size
     remaining_bits = primitive_size % bpv
-    num_iters = (primitive_size - 1) // bpv
-    o = 2 * bpv * num_iters
+    num_shifts = (primitive_size - 1) // bpv
+    o = 2 * bpv * num_shifts
+
     if remaining_bits == 0:
-      f.write('    pdu.splitLongs(%d, longs, %d, %d, MASK%d_%d, longs, %d, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, bpv, primitive_size, bpv, o, primitive_size, primitive_size - num_iters * bpv))
+      if num_shifts == 1:
+        f.write('    pdu.splitLongs1(%d, longs, %d, MASK%d_%d, longs, %d, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, primitive_size, bpv, o, primitive_size, primitive_size - num_shifts * bpv))
+      elif num_shifts == 2:
+        f.write('    pdu.splitLongs2(%d, longs, %d, %d, MASK%d_%d, longs, %d, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, primitive_size - 2 * bpv, primitive_size, bpv, o, primitive_size, primitive_size - num_shifts * bpv))
+      elif num_shifts == 3:
+        f.write('    pdu.splitLongs3(%d, longs, %d, %d, %d, MASK%d_%d, longs, %d, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, primitive_size - 2 * bpv, primitive_size - 3 * bpv, primitive_size, bpv, o, primitive_size, primitive_size - num_shifts * bpv))
+      else:
+        f.write('    pdu.in.readLongs(tmp, 0, %d);\n' %(bpv * 2))
+        f.write('    for (int i = 0; i < %d; ++i) {\n' %(bpv*2))
+        for shift in range(num_shifts+1):
+          f.write('      longs[%d + i] = (tmp[i] >>> %d) & MASK%d_%d;\n' %(shift * bpv * 2, primitive_size - (shift + 1) * bpv, primitive_size, bpv))
+        f.write('    }\n')
+
     else:
-      f.write('    pdu.splitLongs(%d, longs, %d, %d, MASK%d_%d, tmp, 0, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, bpv, primitive_size, bpv, primitive_size, primitive_size - num_iters * bpv))
-      f.write('    decode%dTo%dRemainder(tmp, longs);\n' %(bpv, primitive_size))
-      has_remainder = True
+      if num_shifts == 1:
+        f.write('    pdu.splitLongs1(%d, longs, %d, MASK%d_%d, tmp, 0, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, primitive_size, bpv, primitive_size, primitive_size - num_shifts * bpv))
+      elif num_shifts == 2:
+        f.write('    pdu.splitLongs2(%d, longs, %d, %d, MASK%d_%d, tmp, 0, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, primitive_size - 2 * bpv, primitive_size, bpv, primitive_size, primitive_size - num_shifts * bpv))
+      else:
+        f.write('    pdu.splitLongs3(%d, longs, %d, %d, %d, MASK%d_%d, tmp, 0, MASK%d_%d);\n' %(bpv*2, primitive_size - bpv, primitive_size - 2 * bpv, primitive_size - 3 * bpv, primitive_size, bpv, primitive_size, primitive_size - num_shifts * bpv))
+      f.write('    decode%dTo%dRemainder(tmp, longs);' %(bpv, primitive_size))
   f.write('    prefixSum%d(longs, base);\n' %primitive_size)
   f.write('  }\n')
 
-  if has_remainder:
+  if remaining_bits != 0 and primitive_size != next_primitive(bpv):
     f.write('\n')
-    f.write('  private static void decode%dTo%dRemainder(long[] tmp, long[] longs) throws IOException {\n' %(bpv, primitive_size))
+    f.write('  static void decode%dTo%dRemainder(long[] tmp, long[] longs) throws IOException {\n' %(bpv, primitive_size))
     writeRemainder(bpv, primitive_size, remaining_bits, o, 128/num_values_per_long - o, f)
     f.write('  }\n')
 
@@ -394,26 +412,38 @@ def writeDecode(bpv, f):
 if __name__ == '__main__':
   f = open(OUTPUT_FILE, 'w')
   f.write(HEADER)
+
+  f.write("""
+  @FunctionalInterface
+  private interface Decoder {
+    void decodeAndPrefixSum(PostingDecodingUtil pdu, long[] tmp, long[] longs, long base) throws IOException;
+  }
+
+  private static Decoder[] DECODERS = new Decoder[%d];
+  static {
+""" %(MAX_SPECIALIZED_BITS_PER_VALUE + 1))
+
+  for bpv in range(1, MAX_SPECIALIZED_BITS_PER_VALUE + 1):
+    f.write("    DECODERS[%d] = ForDeltaUtil::decodeAndPrefixSum%d;\n" %(bpv, bpv))
+  f.write("""
+  }
+""")
+
   f.write("""
   /**
    * Delta-decode 128 integers into {@code longs}.
    */
   void decodeAndPrefixSum(int bitsPerValue, PostingDecodingUtil pdu, long base, long[] longs) throws IOException {
-    switch (bitsPerValue) {
-""")
-  for bpv in range(1, MAX_SPECIALIZED_BITS_PER_VALUE+1):
-    primitive_size = primitive_size_for_bpv(bpv)
-    f.write('    case %d:\n' %bpv)
-    f.write('      decodeAndPrefixSum%d(pdu, tmp, longs, base);\n' %bpv)
-    f.write('      break;\n')
-  f.write('    default:\n')
-  f.write('      decodeSlow(bitsPerValue, pdu, tmp, longs);\n')
-  f.write('      prefixSum32(longs, base);\n')
-  f.write('      break;\n')
-  f.write('    }\n')
-  f.write('  }\n')
+    if (bitsPerValue <= %d) {
+      DECODERS[bitsPerValue].decodeAndPrefixSum(pdu, tmp, longs, base);
+    } else {
+      decodeSlow(bitsPerValue, pdu, tmp, longs);
+      prefixSum32(longs, base);
+    }
+  }
 
-  f.write('\n')
+""" %MAX_SPECIALIZED_BITS_PER_VALUE)
+
   for bpv in range(1, MAX_SPECIALIZED_BITS_PER_VALUE+1):
     writeDecode(bpv, f)
     if bpv < MAX_SPECIALIZED_BITS_PER_VALUE:
