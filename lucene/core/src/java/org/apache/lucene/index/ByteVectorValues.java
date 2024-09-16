@@ -29,6 +29,20 @@ import org.apache.lucene.search.VectorScorer;
  */
 public abstract class ByteVectorValues extends KnnVectorValues {
 
+  /**
+   * A dictionary of dense byte vectors.
+   */
+  public static abstract class Dictionary {
+
+    /**
+     * Return the vector value for the given vector ordinal which must be in [0, size() - 1],
+     * otherwise IndexOutOfBoundsException is thrown. The returned array may be shared across calls.
+     *
+     * @return the vector value
+     */
+    public abstract byte[] vectorValue(int ord) throws IOException;
+  }
+
   /** Sole constructor */
   protected ByteVectorValues() {}
 
@@ -37,13 +51,26 @@ public abstract class ByteVectorValues extends KnnVectorValues {
     return this;
   }
 
+  /** Retrieve a {@link Dictionary} of vectors. */
+  public Dictionary dictionary() throws IOException {
+    ByteVectorValues copy = copy();
+    return new Dictionary() {
+      @Override
+      public byte[] vectorValue(int ord) throws IOException {
+        return copy.vectorValue(ord);
+      }
+    };
+  }
+
   /**
    * Return the vector value for the given vector ordinal which must be in [0, size() - 1],
    * otherwise IndexOutOfBoundsException is thrown. The returned array may be shared across calls.
    *
    * @return the vector value
    */
-  public abstract byte[] vectorValue(int ord) throws IOException;
+  public byte[] vectorValue(int ord) throws IOException {
+    return dictionary().vectorValue(ord);
+  }
 
   /**
    * Checks the Vector Encoding of a field
@@ -101,13 +128,13 @@ public abstract class ByteVectorValues extends KnnVectorValues {
       }
 
       @Override
-      public byte[] vectorValue(int targetOrd) {
-        return vectors.get(targetOrd);
-      }
-
-      @Override
-      public ByteVectorValues copy() {
-        return this;
+      public Dictionary dictionary() throws IOException {
+        return new Dictionary() {
+          @Override
+          public byte[] vectorValue(int ord) throws IOException {
+            return vectors.get(ord);
+          }
+        };
       }
 
       @Override

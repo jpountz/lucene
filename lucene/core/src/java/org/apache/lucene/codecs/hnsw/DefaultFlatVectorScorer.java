@@ -125,15 +125,15 @@ public class DefaultFlatVectorScorer implements FlatVectorsScorer {
   /** RandomVectorScorerSupplier for Float vector */
   private static final class FloatScoringSupplier implements RandomVectorScorerSupplier {
     private final FloatVectorValues vectors;
-    private final FloatVectorValues vectors1;
-    private final FloatVectorValues vectors2;
+    private final FloatVectorValues.Dictionary dict1;
+    private final FloatVectorValues.Dictionary dict2;
     private final VectorSimilarityFunction similarityFunction;
 
     private FloatScoringSupplier(
         FloatVectorValues vectors, VectorSimilarityFunction similarityFunction) throws IOException {
       this.vectors = vectors;
-      vectors1 = vectors.copy();
-      vectors2 = vectors.copy();
+      dict1 = vectors.dictionary();
+      dict2 = vectors.dictionary();
       this.similarityFunction = similarityFunction;
     }
 
@@ -142,7 +142,7 @@ public class DefaultFlatVectorScorer implements FlatVectorsScorer {
       return new RandomVectorScorer.AbstractRandomVectorScorer(vectors) {
         @Override
         public float score(int node) throws IOException {
-          return similarityFunction.compare(vectors1.vectorValue(ord), vectors2.vectorValue(node));
+          return similarityFunction.compare(dict1.vectorValue(ord), dict2.vectorValue(node));
         }
       };
     }
