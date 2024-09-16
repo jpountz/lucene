@@ -29,10 +29,8 @@ import org.apache.lucene.search.VectorScorer;
  */
 public abstract class FloatVectorValues extends KnnVectorValues {
 
-  /**
-   * A dictionary of dense float vectors.
-   */
-  public static abstract class Dictionary {
+  /** A dictionary of dense float vectors. */
+  public abstract static class Dictionary {
 
     /**
      * Return the vector value for the given vector ordinal which must be in [0, size() - 1],

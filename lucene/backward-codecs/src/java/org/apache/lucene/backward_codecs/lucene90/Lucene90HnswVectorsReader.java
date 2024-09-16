@@ -249,7 +249,7 @@ public final class Lucene90HnswVectorsReader extends KnnVectorsReader {
             target,
             knnCollector.k(),
             knnCollector.k(),
-            vectorValues,
+            vectorValues.dictionary(),
             fieldEntry.similarityFunction,
             getGraphValues(fieldEntry),
             getAcceptOrds(acceptDocs, fieldEntry),
