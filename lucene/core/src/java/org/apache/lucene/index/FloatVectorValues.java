@@ -39,6 +39,9 @@ public abstract class FloatVectorValues extends KnnVectorValues {
      * @return the vector value
      */
     public abstract float[] vectorValue(int ord) throws IOException;
+
+    /** Return the number of vectors. */
+    public abstract int size();
   }
 
   /** Sole constructor */
@@ -57,6 +60,11 @@ public abstract class FloatVectorValues extends KnnVectorValues {
       @Override
       public float[] vectorValue(int ord) throws IOException {
         return copy.vectorValue(ord);
+      }
+
+      @Override
+      public int size() {
+        return copy.size();
       }
     };
   }
@@ -134,6 +142,11 @@ public abstract class FloatVectorValues extends KnnVectorValues {
           @Override
           public float[] vectorValue(int ord) throws IOException {
             return vectors.get(ord);
+          }
+
+          @Override
+          public int size() {
+            return vectors.size();
           }
         };
       }
