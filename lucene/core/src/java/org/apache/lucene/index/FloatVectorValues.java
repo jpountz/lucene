@@ -30,7 +30,7 @@ import org.apache.lucene.search.VectorScorer;
 public abstract class FloatVectorValues extends KnnVectorValues {
 
   /** A dictionary of dense float vectors. */
-  public abstract static class Dictionary {
+  public abstract static class Dictionary extends KnnVectorValues.Dictionary {
 
     /**
      * Return the vector value for the given vector ordinal which must be in [0, size() - 1],
@@ -39,9 +39,6 @@ public abstract class FloatVectorValues extends KnnVectorValues {
      * @return the vector value
      */
     public abstract float[] vectorValue(int ord) throws IOException;
-
-    /** Return the number of vectors. */
-    public abstract int size();
   }
 
   /** Sole constructor */
@@ -54,6 +51,7 @@ public abstract class FloatVectorValues extends KnnVectorValues {
   }
 
   /** Retrieve a {@link Dictionary} of vectors. */
+  @Override
   public Dictionary dictionary() throws IOException {
     FloatVectorValues copy = copy();
     return new Dictionary() {

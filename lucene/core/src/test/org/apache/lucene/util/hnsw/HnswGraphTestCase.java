@@ -119,12 +119,11 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
   }
 
   protected RandomVectorScorer buildScorer(KnnVectorValues vectors, T query) throws IOException {
-    KnnVectorValues vectorsCopy = vectors.copy();
     return switch (getVectorEncoding()) {
       case BYTE ->
-          flatVectorScorer.getRandomVectorScorer(similarityFunction, vectorsCopy, (byte[]) query);
+          flatVectorScorer.getRandomVectorScorer(similarityFunction, vectors, (byte[]) query);
       case FLOAT32 ->
-          flatVectorScorer.getRandomVectorScorer(similarityFunction, vectorsCopy, (float[]) query);
+          flatVectorScorer.getRandomVectorScorer(similarityFunction, vectors, (float[]) query);
     };
   }
 
@@ -220,16 +219,12 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
   }
 
   @SuppressWarnings("unchecked")
-  private T vectorValue(KnnVectorValues vectors, int ord) throws IOException {
-    switch (vectors.getEncoding()) {
-      case BYTE -> {
-        return (T) ((ByteVectorValues) vectors).vectorValue(ord);
-      }
-      case FLOAT32 -> {
-        return (T) ((FloatVectorValues) vectors).vectorValue(ord);
-      }
+  private T vectorValue(KnnVectorValues.Dictionary vectors, int ord) throws IOException {
+    if (vectors instanceof ByteVectorValues.Dictionary) {
+      return (T) ((ByteVectorValues.Dictionary) vectors).vectorValue(ord);
+    } else {
+      return (T) ((FloatVectorValues.Dictionary) vectors).vectorValue(ord);
     }
-    throw new AssertionError("unknown encoding " + vectors.getEncoding());
   }
 
   // test writing out and reading in a graph gives the expected graph
@@ -240,7 +235,6 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
     int beamWidth = random().nextInt(10) + 5;
     long seed = random().nextLong();
     KnnVectorValues vectors = vectorValues(nDoc, dim);
-    KnnVectorValues v2 = vectors.copy(), v3 = vectors.copy();
     RandomVectorScorerSupplier scorerSupplier = buildScorerSupplier(vectors);
     HnswGraphBuilder builder = HnswGraphBuilder.create(scorerSupplier, M, beamWidth, seed);
     HnswGraph hnsw = builder.build(vectors.size());
@@ -268,7 +262,8 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
                     }
                   });
       try (IndexWriter iw = new IndexWriter(dir, iwc)) {
-        KnnVectorValues.DocIndexIterator it2 = v2.iterator();
+        KnnVectorValues.DocIndexIterator it2 = vectors.iterator();
+        KnnVectorValues.Dictionary dict2 = vectors.dictionary();
         while (it2.nextDoc() != NO_MORE_DOCS) {
           while (indexedDoc < it2.docID()) {
             // increment docId in the index by adding empty documents
@@ -276,7 +271,7 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
             indexedDoc++;
           }
           Document doc = new Document();
-          doc.add(knnVectorField("field", vectorValue(v2, it2.index()), similarityFunction));
+          doc.add(knnVectorField("field", vectorValue(dict2, it2.index()), similarityFunction));
           doc.add(new StoredField("id", it2.docID()));
           iw.addDocument(doc);
           nVec++;
@@ -290,7 +285,7 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
           assertEquals(nVec, values.size());
           assertEquals(indexedDoc, ctx.reader().maxDoc());
           assertEquals(indexedDoc, ctx.reader().numDocs());
-          assertVectorsEqual(v3, values);
+          assertVectorsEqual(vectors, values);
           HnswGraph graphValues =
               ((Lucene99HnswVectorsReader)
                       ((PerFieldKnnVectorsFormat.FieldsReader)
@@ -350,6 +345,7 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
       int indexedDoc = 0;
       try (IndexWriter iw = new IndexWriter(dir, iwc);
           IndexWriter iw2 = new IndexWriter(dir2, iwc2)) {
+        KnnVectorValues.Dictionary dict = vectors.dictionary();
         for (int ord = 0; ord < vectors.size(); ord++) {
           while (indexedDoc < vectors.ordToDoc(ord)) {
             // increment docId in the index by adding empty documents
@@ -357,7 +353,7 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
             indexedDoc++;
           }
           Document doc = new Document();
-          doc.add(knnVectorField("vector", vectorValue(vectors, ord), similarityFunction));
+          doc.add(knnVectorField("vector", vectorValue(dict, ord), similarityFunction));
           doc.add(new StoredField("id", vectors.ordToDoc(ord)));
           doc.add(new NumericDocValuesField("sortkey", random().nextLong()));
           iw.addDocument(doc);
@@ -632,7 +628,7 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
 
     OnHeapHnswGraph initializerGraph = initializerBuilder.build(initializerVectors.size());
     KnnVectorValues finalVectorValues =
-        vectorValues(totalSize, dim, initializerVectors.copy(), docIdOffset);
+        vectorValues(totalSize, dim, initializerVectors, docIdOffset);
     int[] initializerOrdMap =
         createOffsetOrdinalMap(initializerSize, finalVectorValues, docIdOffset);
 
@@ -917,6 +913,7 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
     int size = atLeast(100);
     int dim = atLeast(10);
     KnnVectorValues vectors = vectorValues(size, dim);
+    KnnVectorValues.Dictionary dict = vectors.dictionary();
     int topK = 5;
     RandomVectorScorerSupplier scorerSupplier = buildScorerSupplier(vectors);
     HnswGraphBuilder builder = HnswGraphBuilder.create(scorerSupplier, 10, 30, random().nextLong());
@@ -933,13 +930,13 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
       TopDocs topDocs = actual.topDocs();
       NeighborQueue expected = new NeighborQueue(topK, false);
       for (int j = 0; j < size; j++) {
-        if (vectorValue(vectors, j) != null && (acceptOrds == null || acceptOrds.get(j))) {
+        if (vectorValue(dict, j) != null && (acceptOrds == null || acceptOrds.get(j))) {
           if (getVectorEncoding() == VectorEncoding.BYTE) {
             expected.add(
-                j, similarityFunction.compare((byte[]) query, (byte[]) vectorValue(vectors, j)));
+                j, similarityFunction.compare((byte[]) query, (byte[]) vectorValue(dict, j)));
           } else {
             expected.add(
-                j, similarityFunction.compare((float[]) query, (float[]) vectorValue(vectors, j)));
+                j, similarityFunction.compare((float[]) query, (float[]) vectorValue(dict, j)));
           }
           if (expected.size() > topK) {
             expected.pop();
@@ -1071,7 +1068,8 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
         };
 
     KnnVectorValues queryVectors = vectorValues(1, dim);
-    RandomVectorScorer queryScorer = buildScorer(docVectors, vectorValue(queryVectors, 0));
+    KnnVectorValues.Dictionary queryDict = queryVectors.dictionary();
+    RandomVectorScorer queryScorer = buildScorer(docVectors, vectorValue(queryDict, 0));
 
     KnnCollector collector = new TopKnnCollector(topK, Integer.MAX_VALUE);
     HnswGraphSearcher.search(queryScorer, collector, singleLevelGraph, null);
@@ -1243,6 +1241,8 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
   void assertVectorsEqual(KnnVectorValues u, KnnVectorValues v) throws IOException {
     int uDoc, vDoc;
     assertEquals(u.size(), v.size());
+    KnnVectorValues.Dictionary uDict = u.dictionary();
+    KnnVectorValues.Dictionary vDict = v.dictionary();
     for (int ord = 0; ord < u.size(); ord++) {
       uDoc = u.ordToDoc(ord);
       vDoc = v.ordToDoc(ord);
@@ -1252,13 +1252,13 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
         case BYTE ->
             assertArrayEquals(
                 "vectors do not match for doc=" + uDoc,
-                (byte[]) vectorValue(u, ord),
-                (byte[]) vectorValue(v, ord));
+                (byte[]) vectorValue(uDict, ord),
+                (byte[]) vectorValue(vDict, ord));
         case FLOAT32 ->
             assertArrayEquals(
                 "vectors do not match for doc=" + uDoc,
-                (float[]) vectorValue(u, ord),
-                (float[]) vectorValue(v, ord),
+                (float[]) vectorValue(uDict, ord),
+                (float[]) vectorValue(vDict, ord),
                 1e-4f);
         default ->
             throw new IllegalArgumentException("unknown vector encoding: " + getVectorEncoding());

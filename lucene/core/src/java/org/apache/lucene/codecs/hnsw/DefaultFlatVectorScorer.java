@@ -160,41 +160,41 @@ public class DefaultFlatVectorScorer implements FlatVectorsScorer {
 
   /** A {@link RandomVectorScorer} for float vectors. */
   private static class FloatVectorScorer extends RandomVectorScorer.AbstractRandomVectorScorer {
-    private final FloatVectorValues values;
+    private final FloatVectorValues.Dictionary dict;
     private final float[] query;
     private final VectorSimilarityFunction similarityFunction;
 
     public FloatVectorScorer(
-        FloatVectorValues values, float[] query, VectorSimilarityFunction similarityFunction) {
+        FloatVectorValues values, float[] query, VectorSimilarityFunction similarityFunction) throws IOException {
       super(values);
-      this.values = values;
+      this.dict = values.dictionary();
       this.query = query;
       this.similarityFunction = similarityFunction;
     }
 
     @Override
     public float score(int node) throws IOException {
-      return similarityFunction.compare(query, values.vectorValue(node));
+      return similarityFunction.compare(query, dict.vectorValue(node));
     }
   }
 
   /** A {@link RandomVectorScorer} for byte vectors. */
   private static class ByteVectorScorer extends RandomVectorScorer.AbstractRandomVectorScorer {
-    private final ByteVectorValues values;
+    private final ByteVectorValues.Dictionary dict;
     private final byte[] query;
     private final VectorSimilarityFunction similarityFunction;
 
     public ByteVectorScorer(
-        ByteVectorValues values, byte[] query, VectorSimilarityFunction similarityFunction) {
+        ByteVectorValues values, byte[] query, VectorSimilarityFunction similarityFunction) throws IOException {
       super(values);
-      this.values = values;
+      this.dict = values.dictionary();
       this.query = query;
       this.similarityFunction = similarityFunction;
     }
 
     @Override
     public float score(int node) throws IOException {
-      return similarityFunction.compare(query, values.vectorValue(node));
+      return similarityFunction.compare(query, dict.vectorValue(node));
     }
   }
 }

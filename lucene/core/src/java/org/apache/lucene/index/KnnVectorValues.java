@@ -30,6 +30,15 @@ import org.apache.lucene.util.Bits;
  */
 public abstract class KnnVectorValues {
 
+  /** A dictionary of vectors. */
+  public abstract static class Dictionary {
+    /** Return the number of vectors. */
+    public abstract int size();
+  }
+
+  /** Retrieve a {@link Dictionary} of vectors. */
+  public abstract Dictionary dictionary() throws IOException;
+
   /** Return the dimension of the vectors */
   public abstract int dimension();
 
