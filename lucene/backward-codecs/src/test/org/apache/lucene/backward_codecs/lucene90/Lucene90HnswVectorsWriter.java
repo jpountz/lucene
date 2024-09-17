@@ -250,7 +250,7 @@ public final class Lucene90HnswVectorsWriter extends BufferingKnnVectorsWriter {
             beamWidth,
             Lucene90HnswGraphBuilder.randSeed);
     hnswGraphBuilder.setInfoStream(segmentWriteState.infoStream);
-    Lucene90OnHeapHnswGraph graph = hnswGraphBuilder.build(vectorValues.copy());
+    Lucene90OnHeapHnswGraph graph = hnswGraphBuilder.build(vectorValues.dictionary());
 
     for (int ord = 0; ord < offsets.length; ord++) {
       // write graph

@@ -104,7 +104,7 @@ public final class Lucene90HnswGraphBuilder {
    * @param vectors the vectors for which to build a nearest neighbors graph. Must be an independet
    *     accessor for the vectors
    */
-  public Lucene90OnHeapHnswGraph build(FloatVectorValues vectors) throws IOException {
+  public Lucene90OnHeapHnswGraph build(FloatVectorValues.Dictionary vectors) throws IOException {
     if (infoStream.isEnabled(HNSW_COMPONENT)) {
       infoStream.message(HNSW_COMPONENT, "build graph from " + vectors.size() + " vectors");
     }

@@ -68,7 +68,7 @@ public final class Lucene91HnswGraphBuilder {
 
   // we need two sources of vectors in order to perform diversity check comparisons without
   // colliding
-  private FloatVectorValues buildVectors;
+  private FloatVectorValues.Dictionary buildDict;
 
   /**
    * Reads all the vectors from vector values, builds a graph connecting them by their dense
@@ -89,8 +89,8 @@ public final class Lucene91HnswGraphBuilder {
       int beamWidth,
       long seed)
       throws IOException {
-    vectorValues = vectors.copy();
-    buildVectors = vectors.copy();
+    vectorValues = vectors;
+    buildDict = vectors.dictionary();
     this.similarityFunction = Objects.requireNonNull(similarityFunction);
     if (maxConn <= 0) {
       throw new IllegalArgumentException("maxConn must be positive");
@@ -224,7 +224,7 @@ public final class Lucene91HnswGraphBuilder {
       int cNode = candidates.node[i];
       float cScore = candidates.score[i];
       assert cNode < hnsw.size();
-      if (diversityCheck(vectorValues.vectorValue(cNode), cScore, neighbors, buildVectors)) {
+      if (diversityCheck(vectorValues.vectorValue(cNode), cScore, neighbors, buildDict)) {
         neighbors.add(cNode, cScore);
       }
     }
@@ -246,7 +246,7 @@ public final class Lucene91HnswGraphBuilder {
    * @param score the score of the new candidate and node n, to be compared with scores of the
    *     candidate and n's neighbors
    * @param neighbors the neighbors selected so far
-   * @param vectorValues source of values used for making comparisons between candidate and existing
+   * @param dict source of values used for making comparisons between candidate and existing
    *     neighbors
    * @return whether the candidate is diverse given the existing neighbors
    */
@@ -254,12 +254,12 @@ public final class Lucene91HnswGraphBuilder {
       float[] candidate,
       float score,
       Lucene91NeighborArray neighbors,
-      FloatVectorValues vectorValues)
+      FloatVectorValues.Dictionary dict)
       throws IOException {
     bound.set(score);
     for (int i = 0; i < neighbors.size(); i++) {
       float neighborSimilarity =
-          similarityFunction.compare(candidate, vectorValues.vectorValue(neighbors.node[i]));
+          similarityFunction.compare(candidate, dict.vectorValue(neighbors.node[i]));
       if (bound.check(neighborSimilarity) == false) {
         return false;
       }
@@ -296,7 +296,7 @@ public final class Lucene91HnswGraphBuilder {
       float[] neighborVector = vectorValues.vectorValue(neighborId);
       for (int j = maxConn; j > i; j--) {
         float neighborSimilarity =
-            similarityFunction.compare(neighborVector, buildVectors.vectorValue(neighbors.node[j]));
+            similarityFunction.compare(neighborVector, buildDict.vectorValue(neighbors.node[j]));
         if (bound.check(neighborSimilarity) == false) {
           // node j is too similar to node i given its score relative to the base node
           // replace it with the new node, which is at [maxConn]
