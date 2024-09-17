@@ -120,11 +120,7 @@ public final class Lucene91HnswGraphBuilder {
    * @param vectors the vectors for which to build a nearest neighbors graph. Must be an independent
    *     accessor for the vectors
    */
-  public Lucene91OnHeapHnswGraph build(FloatVectorValues vectors) throws IOException {
-    if (vectors == vectorValues) {
-      throw new IllegalArgumentException(
-          "Vectors to build must be independent of the source of vectors provided to HnswGraphBuilder()");
-    }
+  public Lucene91OnHeapHnswGraph build(FloatVectorValues.Dictionary vectors) throws IOException {
     if (infoStream.isEnabled(HNSW_COMPONENT)) {
       infoStream.message(HNSW_COMPONENT, "build graph from " + vectors.size() + " vectors");
     }
