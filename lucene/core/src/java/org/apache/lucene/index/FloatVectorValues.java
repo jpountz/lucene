@@ -50,22 +50,9 @@ public abstract class FloatVectorValues extends KnnVectorValues {
     return this;
   }
 
-  /** Retrieve a {@link Dictionary} of vectors. */
+  /** Retrieve a {@link Dictionary} of float[] vectors. */
   @Override
-  public Dictionary dictionary() throws IOException {
-    FloatVectorValues copy = copy();
-    return new Dictionary() {
-      @Override
-      public float[] vectorValue(int ord) throws IOException {
-        return copy.vectorValue(ord);
-      }
-
-      @Override
-      public int size() {
-        return copy.size();
-      }
-    };
-  }
+  public abstract Dictionary dictionary() throws IOException;
 
   /**
    * Return the vector value for the given vector ordinal which must be in [0, size() - 1],

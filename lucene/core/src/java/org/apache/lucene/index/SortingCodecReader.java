@@ -314,9 +314,8 @@ public final class SortingCodecReader extends FilterCodecReader {
     }
 
     @Override
-    public float[] vectorValue(int ord) throws IOException {
-      // ords are interpreted in the delegate's ord-space.
-      return delegate.vectorValue(ord);
+    public Dictionary dictionary() throws IOException {
+      return delegate.dictionary();
     }
 
     @Override

@@ -1099,13 +1099,11 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
   /** Returns vectors evenly distributed around the upper unit semicircle. */
   static class CircularFloatVectorValues extends FloatVectorValues {
     private final int size;
-    private final float[] value;
 
     int doc = -1;
 
     CircularFloatVectorValues(int size) {
       this.size = size;
-      value = new float[2];
     }
 
     @Override
@@ -1123,8 +1121,22 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
       return size;
     }
 
-    public float[] vectorValue() {
-      return vectorValue(doc);
+    @Override
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        final float[] value = new float[2];
+
+        @Override
+        public int size() {
+          return size;
+        }
+
+        @Override
+        public float[] vectorValue(int ord) throws IOException {
+          return unitVector2d(ord / (double) size, value);
+        }
+      };
     }
 
     public int docID() {
@@ -1142,11 +1154,6 @@ abstract class HnswGraphTestCase<T> extends LuceneTestCase {
         doc = NO_MORE_DOCS;
       }
       return doc;
-    }
-
-    @Override
-    public float[] vectorValue(int ord) {
-      return unitVector2d(ord / (double) size, value);
     }
 
     @Override

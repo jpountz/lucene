@@ -122,8 +122,8 @@ public abstract class BufferingKnnVectorsWriter extends KnnVectorsWriter {
     }
 
     @Override
-    public float[] vectorValue(int ord) throws IOException {
-      return delegate.vectorValue(ord);
+    public Dictionary dictionary() throws IOException {
+      return delegate.dictionary();
     }
 
     @Override
@@ -134,11 +134,6 @@ public abstract class BufferingKnnVectorsWriter extends KnnVectorsWriter {
     @Override
     public int size() {
       return delegate.size();
-    }
-
-    @Override
-    public SortingFloatVectorValues copy() {
-      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -295,8 +290,19 @@ public abstract class BufferingKnnVectorsWriter extends KnnVectorsWriter {
     }
 
     @Override
-    public float[] vectorValue(int targetOrd) {
-      return vectors.get(targetOrd);
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        @Override
+        public float[] vectorValue(int ord) throws IOException {
+          return vectors.get(ord);
+        }
+
+        @Override
+        public int size() {
+          return vectors.size();
+        }
+      };
     }
 
     @Override

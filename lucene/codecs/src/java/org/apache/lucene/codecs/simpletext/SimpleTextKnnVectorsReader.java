@@ -327,8 +327,19 @@ public class SimpleTextKnnVectorsReader extends KnnVectorsReader {
     }
 
     @Override
-    public float[] vectorValue(int ord) {
-      return values[ord];
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        @Override
+        public float[] vectorValue(int ord) {
+          return values[ord];
+        }
+
+        @Override
+        public int size() {
+          return entry.size();
+        }
+      };
     }
 
     @Override

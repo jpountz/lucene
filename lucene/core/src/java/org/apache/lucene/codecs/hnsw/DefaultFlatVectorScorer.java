@@ -165,7 +165,8 @@ public class DefaultFlatVectorScorer implements FlatVectorsScorer {
     private final VectorSimilarityFunction similarityFunction;
 
     public FloatVectorScorer(
-        FloatVectorValues values, float[] query, VectorSimilarityFunction similarityFunction) throws IOException {
+        FloatVectorValues values, float[] query, VectorSimilarityFunction similarityFunction)
+        throws IOException {
       super(values);
       this.dict = values.dictionary();
       this.query = query;
@@ -185,7 +186,8 @@ public class DefaultFlatVectorScorer implements FlatVectorsScorer {
     private final VectorSimilarityFunction similarityFunction;
 
     public ByteVectorScorer(
-        ByteVectorValues values, byte[] query, VectorSimilarityFunction similarityFunction) throws IOException {
+        ByteVectorValues values, byte[] query, VectorSimilarityFunction similarityFunction)
+        throws IOException {
       super(values);
       this.dict = values.dictionary();
       this.query = query;

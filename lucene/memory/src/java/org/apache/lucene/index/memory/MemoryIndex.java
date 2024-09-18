@@ -2301,12 +2301,22 @@ public class MemoryIndex {
     }
 
     @Override
-    public float[] vectorValue(int ord) {
-      if (ord == 0) {
-        return info.floatVectorValues[0];
-      } else {
-        return null;
-      }
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+        @Override
+        public float[] vectorValue(int ord) {
+          if (ord == 0) {
+            return info.floatVectorValues[0];
+          } else {
+            return null;
+          }
+        }
+
+        @Override
+        public int size() {
+          return info.floatVectorCount;
+        }
+      };
     }
 
     @Override

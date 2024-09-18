@@ -17,6 +17,7 @@
 
 package org.apache.lucene.util.hnsw;
 
+import java.io.IOException;
 import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.tests.util.LuceneTestCase;
 import org.apache.lucene.util.ArrayUtil;
@@ -26,7 +27,6 @@ class MockVectorValues extends FloatVectorValues {
   private final float[][] denseValues;
   protected final float[][] values;
   private final int numVectors;
-  private final float[] scratch;
 
   static MockVectorValues fromValues(float[][] values) {
     float[] firstNonNull = null;
@@ -51,7 +51,6 @@ class MockVectorValues extends FloatVectorValues {
     this.values = values;
     this.denseValues = denseValues;
     this.numVectors = numVectors;
-    this.scratch = new float[dimension];
   }
 
   @Override
@@ -71,16 +70,29 @@ class MockVectorValues extends FloatVectorValues {
   }
 
   @Override
-  public float[] vectorValue(int ord) {
-    if (LuceneTestCase.random().nextBoolean()) {
-      return values[ord];
-    } else {
-      // Sometimes use the same scratch array repeatedly, mimicing what the codec will do.
-      // This should help us catch cases of aliasing where the same vector values source is used
-      // twice in a single computation.
-      System.arraycopy(values[ord], 0, scratch, 0, dimension);
-      return scratch;
-    }
+  public Dictionary dictionary() throws IOException {
+    return new Dictionary() {
+
+      float[] scratch = new float[dimension];
+
+      @Override
+      public float[] vectorValue(int ord) throws IOException {
+        if (LuceneTestCase.random().nextBoolean()) {
+          return values[ord];
+        } else {
+          // Sometimes use the same scratch array repeatedly, mimicing what the codec will do.
+          // This should help us catch cases of aliasing where the same vector values source is used
+          // twice in a single computation.
+          System.arraycopy(values[ord], 0, scratch, 0, dimension);
+          return scratch;
+        }
+      }
+
+      @Override
+      public int size() {
+        return values.length;
+      }
+    };
   }
 
   @Override

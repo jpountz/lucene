@@ -359,8 +359,6 @@ public final class Lucene90HnswVectorsReader extends KnnVectorsReader {
     final IndexInput dataIn;
 
     final int byteSize;
-    int lastOrd = -1;
-    final float[] value;
     final VectorSimilarityFunction similarityFunction;
 
     OffHeapFloatVectorValues(
@@ -374,7 +372,6 @@ public final class Lucene90HnswVectorsReader extends KnnVectorsReader {
       this.similarityFunction = similarityFunction;
 
       byteSize = Float.BYTES * dimension;
-      value = new float[dimension];
     }
 
     @Override
@@ -393,14 +390,28 @@ public final class Lucene90HnswVectorsReader extends KnnVectorsReader {
     }
 
     @Override
-    public float[] vectorValue(int targetOrd) throws IOException {
-      if (lastOrd == targetOrd) {
-        return value;
-      }
-      dataIn.seek((long) targetOrd * byteSize);
-      dataIn.readFloats(value, 0, value.length);
-      lastOrd = targetOrd;
-      return value;
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        int lastOrd = -1;
+        final float[] value = new float[dimension];
+
+        @Override
+        public float[] vectorValue(int targetOrd) throws IOException {
+          if (lastOrd == targetOrd) {
+            return value;
+          }
+          dataIn.seek((long) targetOrd * byteSize);
+          dataIn.readFloats(value, 0, value.length);
+          lastOrd = targetOrd;
+          return value;
+        }
+
+        @Override
+        public int size() {
+          return ordToDoc.length;
+        }
+      };
     }
 
     @Override

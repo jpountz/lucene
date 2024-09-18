@@ -836,7 +836,6 @@ final class SlowCompositeCodecReaderWrapper extends CodecReader {
       final DocValuesSub<?>[] subs;
       final MergedDocIterator<FloatVectorValues> iter;
       final int[] starts;
-      int lastSubIndex;
 
       MergedFloatVectorValues(int dimension, int size, List<DocValuesSub<FloatVectorValues>> subs) {
         this.dimension = dimension;
@@ -868,14 +867,27 @@ final class SlowCompositeCodecReaderWrapper extends CodecReader {
       }
 
       @Override
-      public float[] vectorValue(int ord) throws IOException {
-        assert ord >= 0 && ord < size;
-        // We need to implement fully random-access API here in order to support callers like
-        // SortingCodecReader that
-        // rely on it.
-        lastSubIndex = findSub(ord, lastSubIndex, starts);
-        return ((FloatVectorValues) subs[lastSubIndex].sub)
-            .vectorValue(ord - subs[lastSubIndex].ordStart);
+      public Dictionary dictionary() throws IOException {
+        return new Dictionary() {
+
+          int lastSubIndex;
+
+          @Override
+          public float[] vectorValue(int ord) throws IOException {
+            assert ord >= 0 && ord < size;
+            // We need to implement fully random-access API here in order to support callers like
+            // SortingCodecReader that
+            // rely on it.
+            lastSubIndex = findSub(ord, lastSubIndex, starts);
+            return ((FloatVectorValues) subs[lastSubIndex].sub)
+                .vectorValue(ord - subs[lastSubIndex].ordStart);
+          }
+
+          @Override
+          public int size() {
+            return size;
+          }
+        };
       }
     }
 

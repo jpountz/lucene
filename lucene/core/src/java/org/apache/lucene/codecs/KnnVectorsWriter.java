@@ -349,11 +349,23 @@ public abstract class KnnVectorsWriter implements Accountable, Closeable {
       }
 
       @Override
-      public float[] vectorValue(int ord) throws IOException {
-        // FIXME what can we assert here?
-        // assert ord == iterator.index();
-        return current.values.vectorValue(current.index());
+      public Dictionary dictionary() throws IOException {
+        return new Dictionary() {
+
+          @Override
+          public float[] vectorValue(int ord) throws IOException {
+            // FIXME what can we assert here?
+            // assert ord == iterator.index();
+            return current.values.vectorValue(current.index());
+          }
+
+          @Override
+          public int size() {
+            return size;
+          }
+        };
       }
+      ;
 
       @Override
       public int size() {

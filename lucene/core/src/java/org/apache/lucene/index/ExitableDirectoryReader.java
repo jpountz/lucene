@@ -441,8 +441,8 @@ public class ExitableDirectoryReader extends FilterDirectoryReader {
       }
 
       @Override
-      public float[] vectorValue(int ord) throws IOException {
-        return vectorValues.vectorValue(ord);
+      public Dictionary dictionary() throws IOException {
+        return vectorValues.dictionary();
       }
 
       @Override

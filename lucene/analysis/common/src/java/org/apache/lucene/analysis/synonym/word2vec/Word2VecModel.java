@@ -62,8 +62,19 @@ public class Word2VecModel extends FloatVectorValues {
   }
 
   @Override
-  public float[] vectorValue(int targetOrd) {
-    return termsAndVectors[targetOrd].vector();
+  public Dictionary dictionary() throws IOException {
+    return new Dictionary() {
+
+      @Override
+      public int size() {
+        return dictionarySize;
+      }
+
+      @Override
+      public float[] vectorValue(int targetOrd) {
+        return termsAndVectors[targetOrd].vector();
+      }
+    };
   }
 
   public float[] vectorValue(BytesRef term) {

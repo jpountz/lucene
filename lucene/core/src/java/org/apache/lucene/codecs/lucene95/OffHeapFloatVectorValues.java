@@ -38,8 +38,6 @@ public abstract class OffHeapFloatVectorValues extends FloatVectorValues impleme
   protected final int size;
   protected final IndexInput slice;
   protected final int byteSize;
-  protected int lastOrd = -1;
-  protected final float[] value;
   protected final VectorSimilarityFunction similarityFunction;
   protected final FlatVectorsScorer flatVectorsScorer;
 
@@ -56,7 +54,6 @@ public abstract class OffHeapFloatVectorValues extends FloatVectorValues impleme
     this.byteSize = byteSize;
     this.similarityFunction = similarityFunction;
     this.flatVectorsScorer = flatVectorsScorer;
-    value = new float[dimension];
   }
 
   @Override
@@ -75,14 +72,28 @@ public abstract class OffHeapFloatVectorValues extends FloatVectorValues impleme
   }
 
   @Override
-  public float[] vectorValue(int targetOrd) throws IOException {
-    if (lastOrd == targetOrd) {
-      return value;
-    }
-    slice.seek((long) targetOrd * byteSize);
-    slice.readFloats(value, 0, value.length);
-    lastOrd = targetOrd;
-    return value;
+  public Dictionary dictionary() throws IOException {
+    float[] value = new float[dimension];
+    return new Dictionary() {
+
+      private int lastOrd = -1;
+
+      @Override
+      public float[] vectorValue(int targetOrd) throws IOException {
+        if (lastOrd == targetOrd) {
+          return value;
+        }
+        slice.seek((long) targetOrd * byteSize);
+        slice.readFloats(value, 0, value.length);
+        lastOrd = targetOrd;
+        return value;
+      }
+
+      @Override
+      public int size() {
+        return size;
+      }
+    };
   }
 
   public static OffHeapFloatVectorValues load(
@@ -292,6 +303,22 @@ public abstract class OffHeapFloatVectorValues extends FloatVectorValues impleme
     @Override
     public EmptyOffHeapVectorValues copy() {
       throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        @Override
+        public float[] vectorValue(int ord) throws IOException {
+          throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int size() {
+          return 0;
+        }
+      };
     }
 
     @Override

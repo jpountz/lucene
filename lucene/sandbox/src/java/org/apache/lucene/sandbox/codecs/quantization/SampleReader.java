@@ -58,8 +58,20 @@ public class SampleReader extends FloatVectorValues implements HasIndexSlice {
   }
 
   @Override
-  public float[] vectorValue(int targetOrd) throws IOException {
-    return origin.vectorValue(sampleFunction.applyAsInt(targetOrd));
+  public Dictionary dictionary() throws IOException {
+    Dictionary in = origin.dictionary();
+    return new Dictionary() {
+
+      @Override
+      public int size() {
+        return sampleSize;
+      }
+
+      @Override
+      public float[] vectorValue(int ord) throws IOException {
+        return in.vectorValue(sampleFunction.applyAsInt(ord));
+      }
+    };
   }
 
   @Override

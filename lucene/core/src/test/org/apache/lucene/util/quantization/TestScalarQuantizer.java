@@ -306,8 +306,19 @@ public class TestScalarQuantizer extends LuceneTestCase {
     }
 
     @Override
-    public float[] vectorValue(int ord) throws IOException {
-      return floats[ordToDoc(ord)];
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        @Override
+        public float[] vectorValue(int ord) throws IOException {
+          return floats[ordToDoc(ord)];
+        }
+
+        @Override
+        public int size() {
+          return floats.length;
+        }
+      };
     }
 
     @Override

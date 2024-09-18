@@ -405,7 +405,6 @@ public final class Lucene91HnswVectorsReader extends KnnVectorsReader {
     private final IntUnaryOperator ordToDocOperator;
     private final IndexInput dataIn;
     private final int byteSize;
-    private final float[] value;
     private final VectorSimilarityFunction similarityFunction;
 
     OffHeapFloatVectorValues(
@@ -421,7 +420,6 @@ public final class Lucene91HnswVectorsReader extends KnnVectorsReader {
       this.dataIn = dataIn;
       this.similarityFunction = similarityFunction;
       byteSize = Float.BYTES * dimension;
-      value = new float[dimension];
     }
 
     @Override
@@ -441,10 +439,23 @@ public final class Lucene91HnswVectorsReader extends KnnVectorsReader {
     }
 
     @Override
-    public float[] vectorValue(int targetOrd) throws IOException {
-      dataIn.seek((long) targetOrd * byteSize);
-      dataIn.readFloats(value, 0, value.length);
-      return value;
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        private final float[] value = new float[dimension];
+
+        @Override
+        public int size() {
+          return size;
+        }
+
+        @Override
+        public float[] vectorValue(int targetOrd) throws IOException {
+          dataIn.seek((long) targetOrd * byteSize);
+          dataIn.readFloats(value, 0, value.length);
+          return value;
+        }
+      };
     }
 
     @Override

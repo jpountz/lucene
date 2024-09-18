@@ -870,11 +870,22 @@ public final class Lucene99ScalarQuantizedVectorsWriter extends FlatVectorsWrite
     }
 
     @Override
-    public float[] vectorValue(int ord) throws IOException {
-      if (ord < 0 || ord >= vectorList.size()) {
-        throw new IOException("vector ord " + ord + " out of bounds");
-      }
-      return vectorList.get(ord);
+    public Dictionary dictionary() throws IOException {
+      return new Dictionary() {
+
+        @Override
+        public int size() {
+          return vectorList.size();
+        }
+
+        @Override
+        public float[] vectorValue(int ord) throws IOException {
+          if (ord < 0 || ord >= vectorList.size()) {
+            throw new IOException("vector ord " + ord + " out of bounds");
+          }
+          return vectorList.get(ord);
+        }
+      };
     }
 
     @Override
@@ -1190,12 +1201,10 @@ public final class Lucene99ScalarQuantizedVectorsWriter extends FlatVectorsWrite
 
   static final class NormalizedFloatVectorValues extends FloatVectorValues {
     private final FloatVectorValues values;
-    private final float[] normalizedVector;
     int curOrd = -1;
 
     public NormalizedFloatVectorValues(FloatVectorValues values) {
       this.values = values;
-      this.normalizedVector = new float[values.dimension()];
     }
 
     @Override
@@ -1214,10 +1223,24 @@ public final class Lucene99ScalarQuantizedVectorsWriter extends FlatVectorsWrite
     }
 
     @Override
-    public float[] vectorValue(int ord) throws IOException {
-      System.arraycopy(values.vectorValue(ord), 0, normalizedVector, 0, normalizedVector.length);
-      VectorUtil.l2normalize(normalizedVector);
-      return normalizedVector;
+    public Dictionary dictionary() throws IOException {
+      Dictionary in = values.dictionary();
+      return new Dictionary() {
+
+        float[] normalizedVector = new float[values.dimension()];
+
+        @Override
+        public int size() {
+          return values.size();
+        }
+
+        @Override
+        public float[] vectorValue(int ord) throws IOException {
+          System.arraycopy(in.vectorValue(ord), 0, normalizedVector, 0, normalizedVector.length);
+          VectorUtil.l2normalize(normalizedVector);
+          return normalizedVector;
+        }
+      };
     }
 
     @Override

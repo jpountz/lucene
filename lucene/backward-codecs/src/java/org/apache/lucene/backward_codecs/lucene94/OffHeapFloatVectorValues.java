@@ -35,8 +35,6 @@ abstract class OffHeapFloatVectorValues extends FloatVectorValues {
   protected final int size;
   protected final IndexInput slice;
   protected final int byteSize;
-  protected int lastOrd = -1;
-  protected final float[] value;
   protected final VectorSimilarityFunction vectorSimilarityFunction;
 
   OffHeapFloatVectorValues(
@@ -49,7 +47,6 @@ abstract class OffHeapFloatVectorValues extends FloatVectorValues {
     this.size = size;
     this.slice = slice;
     this.byteSize = byteSize;
-    value = new float[dimension];
     this.vectorSimilarityFunction = vectorSimilarityFunction;
   }
 
@@ -64,14 +61,28 @@ abstract class OffHeapFloatVectorValues extends FloatVectorValues {
   }
 
   @Override
-  public float[] vectorValue(int targetOrd) throws IOException {
-    if (lastOrd == targetOrd) {
-      return value;
-    }
-    slice.seek((long) targetOrd * byteSize);
-    slice.readFloats(value, 0, value.length);
-    lastOrd = targetOrd;
-    return value;
+  public Dictionary dictionary() throws IOException {
+    return new Dictionary() {
+
+      private int lastOrd = -1;
+      private final float[] value = new float[dimension];
+
+      @Override
+      public float[] vectorValue(int targetOrd) throws IOException {
+        if (lastOrd == targetOrd) {
+          return value;
+        }
+        slice.seek((long) targetOrd * byteSize);
+        slice.readFloats(value, 0, value.length);
+        lastOrd = targetOrd;
+        return value;
+      }
+
+      @Override
+      public int size() {
+        return size;
+      }
+    };
   }
 
   static OffHeapFloatVectorValues load(

@@ -421,8 +421,20 @@ public final class Lucene99ScalarQuantizedVectorsReader extends FlatVectorsReade
     }
 
     @Override
-    public float[] vectorValue(int ord) throws IOException {
-      return rawVectorValues.vectorValue(ord);
+    public Dictionary dictionary() throws IOException {
+      Dictionary in = rawVectorValues.dictionary();
+      return new Dictionary() {
+
+        @Override
+        public float[] vectorValue(int ord) throws IOException {
+          return in.vectorValue(ord);
+        }
+
+        @Override
+        public int size() {
+          return in.size();
+        }
+      };
     }
 
     @Override
