@@ -192,7 +192,8 @@ public class SimpleTextKnnVectorsReader extends KnnVectorsReader {
     }
     FieldInfo info = readState.fieldInfos.fieldInfo(field);
     VectorSimilarityFunction vectorSimilarity = info.getVectorSimilarityFunction();
-    for (int ord = 0; ord < values.size(); ord++) {
+    FloatVectorValues.Dictionary dict = values.dictionary();
+    for (int ord = 0; ord < dict.size(); ord++) {
       int doc = values.ordToDoc(ord);
       if (acceptDocs != null && acceptDocs.get(doc) == false) {
         continue;
@@ -202,7 +203,7 @@ public class SimpleTextKnnVectorsReader extends KnnVectorsReader {
         break;
       }
 
-      float[] vector = values.vectorValue(ord);
+      float[] vector = dict.vectorValue(ord);
       float score = vectorSimilarity.compare(vector, target);
       knnCollector.collect(doc, score);
       knnCollector.incVisitedCount(1);
@@ -353,20 +354,17 @@ public class SimpleTextKnnVectorsReader extends KnnVectorsReader {
     }
 
     @Override
-    public VectorScorer scorer(float[] target) {
+    public VectorScorer scorer(float[] target) throws IOException {
       if (size() == 0) {
         return null;
       }
-      SimpleTextFloatVectorValues simpleTextFloatVectorValues =
-          new SimpleTextFloatVectorValues(this);
-      DocIndexIterator iterator = simpleTextFloatVectorValues.iterator();
+      DocIndexIterator iterator = iterator();
+      FloatVectorValues.Dictionary dict = dictionary();
       return new VectorScorer() {
         @Override
         public float score() throws IOException {
           int ord = iterator.index();
-          return entry
-              .similarityFunction()
-              .compare(simpleTextFloatVectorValues.vectorValue(ord), target);
+          return entry.similarityFunction().compare(dict.vectorValue(ord), target);
         }
 
         @Override

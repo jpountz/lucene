@@ -47,7 +47,7 @@ public abstract class FloatVectorValues extends KnnVectorValues {
   @Deprecated
   @Override
   public FloatVectorValues copy() throws IOException {
-    return this;
+    throw new UnsupportedOperationException();
   }
 
   /** Retrieve a {@link Dictionary} of float[] vectors. */

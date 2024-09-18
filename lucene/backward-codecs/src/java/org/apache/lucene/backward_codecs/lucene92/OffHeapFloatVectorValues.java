@@ -129,13 +129,12 @@ abstract class OffHeapFloatVectorValues extends FloatVectorValues {
 
     @Override
     public VectorScorer scorer(float[] query) throws IOException {
-      DenseOffHeapVectorValues values = this.copy();
-      DocIndexIterator iterator = values.iterator();
+      DocIndexIterator iterator = iterator();
+      Dictionary dict = dictionary();
       return new VectorScorer() {
         @Override
         public float score() throws IOException {
-          return values.vectorSimilarityFunction.compare(
-              values.vectorValue(iterator.index()), query);
+          return vectorSimilarityFunction.compare(dict.vectorValue(iterator.index()), query);
         }
 
         @Override
@@ -212,13 +211,12 @@ abstract class OffHeapFloatVectorValues extends FloatVectorValues {
 
     @Override
     public VectorScorer scorer(float[] query) throws IOException {
-      SparseOffHeapVectorValues values = this.copy();
-      DocIndexIterator iterator = values.iterator();
+      DocIndexIterator iterator = iterator();
+      Dictionary dict = dictionary();
       return new VectorScorer() {
         @Override
         public float score() throws IOException {
-          return values.vectorSimilarityFunction.compare(
-              values.vectorValue(iterator.index()), query);
+          return vectorSimilarityFunction.compare(dict.vectorValue(iterator.index()), query);
         }
 
         @Override

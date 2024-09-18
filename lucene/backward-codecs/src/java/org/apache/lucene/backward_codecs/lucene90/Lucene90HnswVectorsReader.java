@@ -425,16 +425,19 @@ public final class Lucene90HnswVectorsReader extends KnnVectorsReader {
     }
 
     @Override
-    public VectorScorer scorer(float[] target) {
+    public VectorScorer scorer(float[] target) throws IOException {
       if (size() == 0) {
         return null;
       }
       OffHeapFloatVectorValues values = this.copy();
       DocIndexIterator iterator = values.iterator();
       return new VectorScorer() {
+
+        final Dictionary dict = values.dictionary();
+
         @Override
         public float score() throws IOException {
-          return values.similarityFunction.compare(values.vectorValue(iterator.index()), target);
+          return values.similarityFunction.compare(dict.vectorValue(iterator.index()), target);
         }
 
         @Override
