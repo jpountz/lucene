@@ -1153,6 +1153,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     protected int doc = -1; // doc we last read
     protected int prevDocID = -1; // last doc ID of the previous block
     protected int docBufferSize = BLOCK_SIZE;
+    // index of the next doc ID in docBuffer
     protected int docBufferUpto = BLOCK_SIZE;
 
     // true if we shallow-advanced to a new block that we have not decoded yet
@@ -1463,11 +1464,15 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
     final boolean indexHasFreq;
     final boolean indexHasOffsets;
+    final boolean indexHasPositions;
     final boolean indexHasPayloads;
     final boolean indexHasOffsetsOrPayloads;
 
     private int freq; // freq we last read
     private int position; // current position
+
+    // Last index of a doc whose positions have been read, plus one.
+    protected int posDocBufferUpto = BLOCK_SIZE;
 
     // how many positions "behind" we are; nextPosition must
     // skip these to "catch up":
@@ -1490,29 +1495,36 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       super(termState);
       final IndexOptions options = fieldInfo.getIndexOptions();
       indexHasFreq = options.compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
+      indexHasPositions = options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
       indexHasOffsets =
           options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
       indexHasPayloads = fieldInfo.hasPayloads();
       indexHasOffsetsOrPayloads = indexHasOffsets || indexHasPayloads;
 
-      this.posIn = Lucene101PostingsReader.this.posIn.clone();
-      posInUtil = VECTORIZATION_PROVIDER.newPostingDecodingUtil(posIn);
+      if (indexHasPositions) {
+        this.posIn = Lucene101PostingsReader.this.posIn.clone();
+        posInUtil = VECTORIZATION_PROVIDER.newPostingDecodingUtil(posIn);
 
-      // Where this term's postings start in the .pos file:
-      final long posTermStartFP = termState.posStartFP;
-      posIn.seek(posTermStartFP);
-      level1PosEndFP = posTermStartFP;
-      level0PosEndFP = posTermStartFP;
-      posPendingCount = 0;
-      if (termState.totalTermFreq < BLOCK_SIZE) {
-        lastPosBlockFP = posTermStartFP;
-      } else if (termState.totalTermFreq == BLOCK_SIZE) {
-        lastPosBlockFP = -1;
+        // Where this term's postings start in the .pos file:
+        final long posTermStartFP = termState.posStartFP;
+        posIn.seek(posTermStartFP);
+        level1PosEndFP = posTermStartFP;
+        level0PosEndFP = posTermStartFP;
+        posPendingCount = 0;
+        if (termState.totalTermFreq < BLOCK_SIZE) {
+          lastPosBlockFP = posTermStartFP;
+        } else if (termState.totalTermFreq == BLOCK_SIZE) {
+          lastPosBlockFP = -1;
+        } else {
+          lastPosBlockFP = posTermStartFP + termState.lastPosBlockOffset;
+        }
+        level1BlockPosUpto = 0;
+        posBufferUpto = BLOCK_SIZE;
       } else {
-        lastPosBlockFP = posTermStartFP + termState.lastPosBlockOffset;
+        this.posIn = null;
+        this.posInUtil = null;
+        lastPosBlockFP = -1;
       }
-      level1BlockPosUpto = 0;
-      posBufferUpto = BLOCK_SIZE;
     }
 
     @Override
@@ -1544,6 +1556,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       }
       prevDocID = docBuffer[BLOCK_SIZE - 1];
       docBufferUpto = 0;
+      posDocBufferUpto = 0;
       assert docBuffer[docBufferSize] == NO_MORE_DOCS;
     }
 
@@ -1573,8 +1586,10 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
         } else {
           docIn.skipBytes(numImpactBytes);
         }
-        level1PosEndFP += docIn.readVLong();
-        level1BlockPosUpto = docIn.readByte();
+        if (indexHasPositions) {
+          level1PosEndFP += docIn.readVLong();
+          level1BlockPosUpto = docIn.readByte();
+        }
         assert indexHasOffsetsOrPayloads || docIn.getFilePointer() == skip1EndFP;
 
         if (level1LastDocID >= target) {
@@ -1592,7 +1607,9 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
         // the first docs of the next block are already decoded. In this case we just accumulate
         // frequencies into posPendingCount instead of seeking backwards and decoding the same pos
         // block again.
-        if (level0PosEndFP >= posIn.getFilePointer()) {
+        if (indexHasPositions == false) {
+          // nothing to do
+        } else if (level0PosEndFP >= posIn.getFilePointer()) {
           posIn.seek(level0PosEndFP);
           posPendingCount = level0BlockPosUpto;
           posBufferUpto = BLOCK_SIZE;
@@ -1612,18 +1629,22 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
             int numImpactBytes = docIn.readVInt();
             docIn.readBytes(level0SerializedImpacts.bytes, 0, numImpactBytes);
             level0SerializedImpacts.length = numImpactBytes;
-            level0PosEndFP += docIn.readVLong();
-            level0BlockPosUpto = docIn.readByte();
-            if (indexHasOffsetsOrPayloads) {
-              docIn.readVLong(); // pay fp delta
-              docIn.readVInt(); // pay upto
+            if (indexHasPositions) {
+              level0PosEndFP += docIn.readVLong();
+              level0BlockPosUpto = docIn.readByte();
+              if (indexHasOffsetsOrPayloads) {
+                docIn.readVLong(); // pay fp delta
+                docIn.readVInt(); // pay upto
+              }
             }
             break;
           }
           // skip block
           docIn.skipBytes(docIn.readVLong()); // impacts
-          level0PosEndFP += docIn.readVLong();
-          level0BlockPosUpto = docIn.readVInt();
+          if (indexHasPositions) {
+            level0PosEndFP += docIn.readVLong();
+            level0BlockPosUpto = docIn.readVInt();
+          }
           docIn.seek(level0DocEndFP);
           docCountUpto += BLOCK_SIZE;
         } else {
@@ -1661,9 +1682,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
       doc = docBuffer[docBufferUpto];
       freq = freqBuffer[docBufferUpto];
-      posPendingCount += freq;
       docBufferUpto++;
-      position = 0;
       return this.doc;
     }
 
@@ -1676,10 +1695,8 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       }
 
       int next = VectorUtil.findNextGEQ(docBuffer, target, docBufferUpto, docBufferSize);
-      posPendingCount += sumOverRange(freqBuffer, docBufferUpto, next + 1);
       freq = freqBuffer[next];
       docBufferUpto = next + 1;
-      position = 0;
       return this.doc = docBuffer[next];
     }
 
@@ -1739,12 +1756,21 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
     @Override
     public int nextPosition() throws IOException {
-      assert posPendingCount > 0;
+      if (posDocBufferUpto != docBufferUpto) {
+        // We're reading the first position of the current doc ID.
+        posPendingCount += sumOverRange(freqBuffer, posDocBufferUpto, docBufferUpto);
+        posDocBufferUpto = docBufferUpto;
+        position = 0;
 
-      if (posPendingCount > freq) {
-        skipPositions();
-        posPendingCount = freq;
+        assert posPendingCount > 0;
+        
+        if (posPendingCount > freq) {
+          skipPositions();
+          posPendingCount = freq;
+        }
       }
+
+      assert posPendingCount > 0;
 
       if (posBufferUpto == BLOCK_SIZE) {
         refillPositions();
