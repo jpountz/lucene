@@ -1163,7 +1163,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     private final BytesRef level1SerializedImpacts;
     private final MutableImpactList level1Impacts;
     
-    private final int[] posDeltaBuffer = new int[BLOCK_SIZE];
+    private final int[] posDeltaBuffer;
 
     private int posBufferUpto;
     final IndexInput posIn;
@@ -1239,6 +1239,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       }
       
       if (indexHasPositions) {
+        posDeltaBuffer = new int[BLOCK_SIZE];
         this.posIn = Lucene101PostingsReader.this.posIn.clone();
         posInUtil = VECTORIZATION_PROVIDER.newPostingDecodingUtil(posIn);
 
@@ -1258,6 +1259,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
         level1BlockPosUpto = 0;
         posBufferUpto = BLOCK_SIZE;
       } else {
+        posDeltaBuffer = null;
         this.posIn = null;
         this.posInUtil = null;
         lastPosBlockFP = -1;
