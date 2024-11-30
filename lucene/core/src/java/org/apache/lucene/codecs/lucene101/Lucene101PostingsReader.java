@@ -1176,7 +1176,6 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     final boolean indexHasOffsetsOrPayloads;
     final boolean needsPositions;
 
-    private int freq; // freq we last read
     private int position; // current position
 
     // Last index of a doc whose positions have been read, plus one.
@@ -1340,7 +1339,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
     @Override
     public int freq() {
-      return freq;
+      return freqBuffer[docBufferUpto - 1];
     }
 
     private void refillDocs() throws IOException {
@@ -1501,7 +1500,6 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       }
 
       doc = docBuffer[docBufferUpto];
-      freq = freqBuffer[docBufferUpto];
       docBufferUpto++;
       return this.doc;
     }
@@ -1515,14 +1513,13 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       }
 
       int next = VectorUtil.findNextGEQ(docBuffer, target, docBufferUpto, docBufferSize);
-      freq = freqBuffer[next];
       docBufferUpto = next + 1;
       return this.doc = docBuffer[next];
     }
 
     private void skipPositions() throws IOException {
       // Skip positions now:
-      int toSkip = posPendingCount - freq;
+      int toSkip = posPendingCount - freq();
       // if (DEBUG) {
       //   System.out.println("      FPR.skipPositions: toSkip=" + toSkip);
       // }
@@ -1588,6 +1585,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
         assert posPendingCount > 0;
         
+        int freq = freq();
         if (posPendingCount > freq) {
           skipPositions();
           posPendingCount = freq;
