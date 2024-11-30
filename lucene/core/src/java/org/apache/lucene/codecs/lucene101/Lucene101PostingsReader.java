@@ -293,8 +293,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       throws IOException {
     final IndexOptions options = fieldInfo.getIndexOptions();
 
-    if (options.compareTo(IndexOptions.DOCS_AND_FREQS) >= 0
-        && (options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0
+    if ((options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0
             || PostingsEnum.featureRequested(flags, PostingsEnum.OFFSETS) == false)
         && (fieldInfo.hasPayloads() == false
             || PostingsEnum.featureRequested(flags, PostingsEnum.PAYLOADS) == false)) {
@@ -1170,8 +1169,9 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     final IndexInput posIn;
     final PostingDecodingUtil posInUtil;
 
-    final boolean indexHasOffsets;
+    final boolean indexHasFreqs;
     final boolean indexHasPositions;
+    final boolean indexHasOffsets;
     final boolean indexHasPayloads;
     final boolean indexHasOffsetsOrPayloads;
     final boolean needsPositions;
@@ -1226,6 +1226,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       docBuffer[BLOCK_SIZE] = NO_MORE_DOCS;
  
       final IndexOptions options = fieldInfo.getIndexOptions();
+      indexHasFreqs = options.compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
       indexHasPositions = options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
       indexHasOffsets =
           options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
@@ -1233,6 +1234,10 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       indexHasOffsetsOrPayloads = indexHasOffsets || indexHasPayloads;
       this.needsPositions = needsPositions && indexHasPositions;
 
+      if (indexHasFreqs == false) {
+        Arrays.fill(freqBuffer, 1);
+      }
+      
       if (indexHasPositions) {
         this.posIn = Lucene101PostingsReader.this.posIn.clone();
         posInUtil = VECTORIZATION_PROVIDER.newPostingDecodingUtil(posIn);
@@ -1291,7 +1296,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
           @Override
           public int numLevels() {
-            return level1LastDocID == NO_MORE_DOCS ? 1 : 2;
+            return indexHasFreqs && level1LastDocID == NO_MORE_DOCS ? 1 : 2;
           }
 
           @Override
@@ -1304,11 +1309,13 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
           @Override
           public List<Impact> getImpacts(int level) {
-            if (level == 0 && level0LastDocID != NO_MORE_DOCS) {
-              return readImpacts(level0SerializedImpacts, level0Impacts);
-            }
-            if (level == 1) {
-              return readImpacts(level1SerializedImpacts, level1Impacts);
+            if (indexHasFreqs) {
+              if (level == 0 && level0LastDocID != NO_MORE_DOCS) {
+                return readImpacts(level0SerializedImpacts, level0Impacts);
+              }
+              if (level == 1) {
+                return readImpacts(level1SerializedImpacts, level1Impacts);
+              }
             }
             return DUMMY_IMPACTS;
           }
@@ -1337,7 +1344,9 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
 
       if (left >= BLOCK_SIZE) {
         forDeltaUtil.decodeAndPrefixSum(docInUtil, prevDocID, docBuffer);
-        pforUtil.decode(docInUtil, freqBuffer);
+        if (indexHasFreqs) {
+          pforUtil.decode(docInUtil, freqBuffer);
+        }
         docCountUpto += BLOCK_SIZE;
       } else if (docFreq == 1) {
         docBuffer[0] = singletonDocID;
@@ -1347,7 +1356,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
         docBufferSize = 1;
       } else {
         // Read vInts:
-        PostingsUtil.readVIntBlock(docIn, docBuffer, freqBuffer, left, true, true);
+        PostingsUtil.readVIntBlock(docIn, docBuffer, freqBuffer, left, indexHasFreqs, true);
         prefixSum(docBuffer, left, prevDocID);
         docBuffer[left] = NO_MORE_DOCS;
         docCountUpto += left;
@@ -1377,19 +1386,22 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
         level1LastDocID += docIn.readVInt();
         level1DocEndFP = docIn.readVLong() + docIn.getFilePointer();
 
-        long skip1EndFP = docIn.readShort() + docIn.getFilePointer();
-        int numImpactBytes = docIn.readShort();
-        if (level1LastDocID >= target) {
-          docIn.readBytes(level1SerializedImpacts.bytes, 0, numImpactBytes);
-          level1SerializedImpacts.length = numImpactBytes;
-        } else {
-          docIn.skipBytes(numImpactBytes);
+        long skip1EndFP = docIn.getFilePointer();
+        if (indexHasFreqs) {
+          skip1EndFP = docIn.readShort() + docIn.getFilePointer();
+          int numImpactBytes = docIn.readShort();
+          if (level1LastDocID >= target) {
+            docIn.readBytes(level1SerializedImpacts.bytes, 0, numImpactBytes);
+            level1SerializedImpacts.length = numImpactBytes;
+          } else {
+            docIn.skipBytes(numImpactBytes);
+          }
+          if (indexHasPositions) {
+            level1PosEndFP += docIn.readVLong();
+            level1BlockPosUpto = docIn.readByte();
+          }
+          assert indexHasOffsetsOrPayloads || docIn.getFilePointer() == skip1EndFP : docIn.getFilePointer() + " " + skip1EndFP;
         }
-        if (indexHasPositions) {
-          level1PosEndFP += docIn.readVLong();
-          level1BlockPosUpto = docIn.readByte();
-        }
-        assert indexHasOffsetsOrPayloads || docIn.getFilePointer() == skip1EndFP;
 
         if (level1LastDocID >= target) {
           docIn.seek(skip1EndFP);
@@ -1425,24 +1437,28 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
           level0LastDocID += docDelta;
 
           if (target <= level0LastDocID) {
-            int numImpactBytes = docIn.readVInt();
-            docIn.readBytes(level0SerializedImpacts.bytes, 0, numImpactBytes);
-            level0SerializedImpacts.length = numImpactBytes;
-            if (indexHasPositions) {
-              level0PosEndFP += docIn.readVLong();
-              level0BlockPosUpto = docIn.readByte();
-              if (indexHasOffsetsOrPayloads) {
-                docIn.readVLong(); // pay fp delta
-                docIn.readVInt(); // pay upto
+            if (indexHasFreqs) {
+              int numImpactBytes = docIn.readVInt();
+              docIn.readBytes(level0SerializedImpacts.bytes, 0, numImpactBytes);
+              level0SerializedImpacts.length = numImpactBytes;
+              if (indexHasPositions) {
+                level0PosEndFP += docIn.readVLong();
+                level0BlockPosUpto = docIn.readByte();
+                if (indexHasOffsetsOrPayloads) {
+                  docIn.readVLong(); // pay fp delta
+                  docIn.readVInt(); // pay upto
+                }
               }
             }
             break;
           }
           // skip block
-          docIn.skipBytes(docIn.readVLong()); // impacts
-          if (indexHasPositions) {
-            level0PosEndFP += docIn.readVLong();
-            level0BlockPosUpto = docIn.readVInt();
+          if (indexHasFreqs) {
+            docIn.skipBytes(docIn.readVLong()); // impacts
+            if (indexHasPositions) {
+              level0PosEndFP += docIn.readVLong();
+              level0BlockPosUpto = docIn.readVInt();
+            }
           }
           docIn.seek(level0DocEndFP);
           docCountUpto += BLOCK_SIZE;
