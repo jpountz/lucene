@@ -1201,10 +1201,13 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     public BlockImpactsPostingsEnum(FieldInfo fieldInfo, IntBlockTermState termState, boolean needsPositions)
         throws IOException {
       this.docFreq = termState.docFreq;
-      this.docIn = Lucene101PostingsReader.this.docIn.clone();
-      this.docInUtil = VECTORIZATION_PROVIDER.newPostingDecodingUtil(docIn);
       if (docFreq > 1) {
+        this.docIn = Lucene101PostingsReader.this.docIn.clone();
+        this.docInUtil = VECTORIZATION_PROVIDER.newPostingDecodingUtil(docIn);
         prefetchPostings(docIn, termState);
+      } else {
+        this.docIn = null;
+        this.docInUtil = null;
       }
       this.singletonDocID = termState.singletonDocID;
       this.totalTermFreq = termState.totalTermFreq;
