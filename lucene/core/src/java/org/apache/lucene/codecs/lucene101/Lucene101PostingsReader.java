@@ -1517,9 +1517,9 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       return this.doc = docBuffer[next];
     }
 
-    private void skipPositions() throws IOException {
+    private void skipPositions(int freq) throws IOException {
       // Skip positions now:
-      int toSkip = posPendingCount - freq();
+      int toSkip = posPendingCount - freq;
       // if (DEBUG) {
       //   System.out.println("      FPR.skipPositions: toSkip=" + toSkip);
       // }
@@ -1587,7 +1587,7 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
         
         int freq = freq();
         if (posPendingCount > freq) {
-          skipPositions();
+          skipPositions(freq);
           posPendingCount = freq;
         }
       }
