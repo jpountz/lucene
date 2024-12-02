@@ -292,16 +292,11 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
   public ImpactsEnum impacts(FieldInfo fieldInfo, BlockTermState state, int flags)
       throws IOException {
     final IndexOptions options = fieldInfo.getIndexOptions();
+    boolean needsPositions = PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS);
+    boolean needsOffsets = PostingsEnum.featureRequested(flags, PostingsEnum.OFFSETS);
+    boolean needsPayloads = PostingsEnum.featureRequested(flags, PostingsEnum.PAYLOADS);
 
-    if ((options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0
-            || PostingsEnum.featureRequested(flags, PostingsEnum.OFFSETS) == false)
-        && (fieldInfo.hasPayloads() == false
-            || PostingsEnum.featureRequested(flags, PostingsEnum.PAYLOADS) == false)) {
-      boolean needsPositions = PostingsEnum.featureRequested(flags, PostingsEnum.POSITIONS);
-      return new BlockImpactsPostingsEnum(fieldInfo, (IntBlockTermState) state, needsPositions);
-    }
-
-    return new SlowImpactsEnum(postings(fieldInfo, state, null, flags));
+    return new BlockImpactsPostingsEnum(fieldInfo, (IntBlockTermState) state, needsPositions, needsOffsets, needsPayloads);
   }
 
   private static long sumOverRange(int[] arr, int start, int end) {
@@ -1133,6 +1128,21 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     private final int[] docBuffer = new int[BLOCK_SIZE + 1];
     private final int[] freqBuffer = new int[BLOCK_SIZE];
 
+    private final int[] posDeltaBuffer;
+
+    private final int[] payloadLengthBuffer;
+    private final int[] offsetStartDeltaBuffer;
+    private final int[] offsetLengthBuffer;
+
+    private byte[] payloadBytes;
+    private int payloadByteUpto;
+    private int payloadLength;
+    private BytesRef payload;
+
+    private int lastStartOffset;
+    private int startOffset;
+    private int endOffset;
+
     private final int docFreq; // number of docs in this posting list
     // sum of freqBuffer in this posting list (or docFreq when omitted)
     private final long totalTermFreq;
@@ -1162,8 +1172,6 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     private int level1DocCountUpto = 0;
     private final BytesRef level1SerializedImpacts;
     private final MutableImpactList level1Impacts;
-    
-    private final int[] posDeltaBuffer;
 
     private int posBufferUpto;
     final IndexInput posIn;
@@ -1175,6 +1183,8 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     final boolean indexHasPayloads;
     final boolean indexHasOffsetsOrPayloads;
     final boolean needsPositions;
+    final boolean needsOffsets;
+    final boolean needsPayloads;
 
     private int position; // current position
 
@@ -1197,7 +1207,10 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
     private long level1PosEndFP;
     private int level1BlockPosUpto;
 
-    public BlockImpactsPostingsEnum(FieldInfo fieldInfo, IntBlockTermState termState, boolean needsPositions)
+    public BlockImpactsPostingsEnum(FieldInfo fieldInfo, IntBlockTermState termState,
+        boolean needsPositions,
+        boolean needsOffsets,
+        boolean needsPayloads)
         throws IOException {
       this.docFreq = termState.docFreq;
       if (docFreq > 1) {
@@ -1235,12 +1248,14 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       indexHasPayloads = fieldInfo.hasPayloads();
       indexHasOffsetsOrPayloads = indexHasOffsets || indexHasPayloads;
       this.needsPositions = needsPositions && indexHasPositions;
+      this.needsOffsets = needsOffsets && indexHasOffsets;
+      this.needsPayloads = needsOffsets && indexHasPayloads;
 
       if (indexHasFreqs == false) {
         Arrays.fill(freqBuffer, 1);
       }
       
-      if (indexHasPositions) {
+      if (needsPositions) {
         posDeltaBuffer = new int[BLOCK_SIZE];
         this.posIn = Lucene101PostingsReader.this.posIn.clone();
         posInUtil = VECTORIZATION_PROVIDER.newPostingDecodingUtil(posIn);
@@ -1266,21 +1281,25 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
         this.posInUtil = null;
         lastPosBlockFP = -1;
       }
+
+      if (needsOffsets) {
+        offsetStartDeltaBuffer = new int[BLOCK_SIZE];
+        offsetLengthBuffer = new int[BLOCK_SIZE];
+      } else {
+        offsetStartDeltaBuffer = null;
+        offsetLengthBuffer = null;
+      }
+
+      if (needsPayloads) {
+        payloadLengthBuffer = new int[BLOCK_SIZE];
+      } else {
+        payloadLengthBuffer = null;
+      }
     }
 
     @Override
     public int docID() {
       return doc;
-    }
-
-    @Override
-    public int startOffset() {
-      return -1;
-    }
-
-    @Override
-    public int endOffset() {
-      return -1;
     }
 
     @Override
@@ -1600,9 +1619,33 @@ public final class Lucene101PostingsReader extends PostingsReaderBase {
       }
       position += posDeltaBuffer[posBufferUpto];
 
+      if (needsPayloads) {
+        payloadLength = payloadLengthBuffer[posBufferUpto];
+        payload.bytes = payloadBytes;
+        payload.offset = payloadByteUpto;
+        payload.length = payloadLength;
+        payloadByteUpto += payloadLength;
+      }
+
+      if (needsOffsets) {
+        startOffset = lastStartOffset + offsetStartDeltaBuffer[posBufferUpto];
+        endOffset = startOffset + offsetLengthBuffer[posBufferUpto];
+        lastStartOffset = startOffset;
+      }
+
       posBufferUpto++;
       posPendingCount--;
       return position;
+    }
+
+    @Override
+    public int startOffset() {
+      return -1;
+    }
+
+    @Override
+    public int endOffset() {
+      return -1;
     }
   }
 
