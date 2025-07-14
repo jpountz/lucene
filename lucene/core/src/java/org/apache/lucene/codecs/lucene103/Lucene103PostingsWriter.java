@@ -70,6 +70,7 @@ public class Lucene103PostingsWriter extends PushPostingsWriterBase {
 
   final int[] docDeltaBuffer;
   final int[] freqBuffer;
+  final long[] normBuffer;
   private int docBufferUpto;
 
   final int[] posDeltaBuffer;
@@ -211,6 +212,7 @@ public class Lucene103PostingsWriter extends PushPostingsWriterBase {
 
     docDeltaBuffer = new int[BLOCK_SIZE];
     freqBuffer = new int[BLOCK_SIZE];
+    normBuffer = new long[BLOCK_SIZE];
   }
 
   @Override
@@ -271,29 +273,26 @@ public class Lucene103PostingsWriter extends PushPostingsWriterBase {
       freqBuffer[docBufferUpto] = termDocFreq;
     }
 
+    long norm = 1L;
+    if (fieldHasNorms) {
+      if (norms.advanceExact(docID)) {
+        norm = norms.longValue();
+        assert norm != 0L;
+      } else {
+        // This can happen if indexing hits a problem after adding a doc to the
+        // postings but before buffering the norm. Such documents are written
+        // deleted and will go away on the first merge.
+      }
+      normBuffer[docBufferUpto] = norm;
+    }
+
+    if (writeFreqs) {
+      level0FreqNormAccumulator.add(termDocFreq, norm);
+    }
+
     this.docID = docID;
     lastPosition = 0;
     lastStartOffset = 0;
-
-    if (writeFreqs) {
-      long norm;
-      if (fieldHasNorms) {
-        boolean found = norms.advanceExact(docID);
-        if (found == false) {
-          // This can happen if indexing hits a problem after adding a doc to the
-          // postings but before buffering the norm. Such documents are written
-          // deleted and will go away on the first merge.
-          norm = 1L;
-        } else {
-          norm = norms.longValue();
-          assert norm != 0 : docID;
-        }
-      } else {
-        norm = 1L;
-      }
-
-      level0FreqNormAccumulator.add(termDocFreq, norm);
-    }
   }
 
   @Override
@@ -391,7 +390,13 @@ public class Lucene103PostingsWriter extends PushPostingsWriterBase {
     if (docBufferUpto < BLOCK_SIZE) {
       assert finishTerm;
       PostingsUtil.writeVIntBlock(
-          level0Output, docDeltaBuffer, freqBuffer, docBufferUpto, writeFreqs);
+          level0Output,
+          docDeltaBuffer,
+          freqBuffer,
+          normBuffer,
+          docBufferUpto,
+          writeFreqs,
+          fieldHasNorms);
     } else {
       if (writeFreqs) {
         List<Impact> impacts = level0FreqNormAccumulator.getCompetitiveFreqNormPairs();

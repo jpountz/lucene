@@ -369,8 +369,8 @@ public final class Lucene103PostingsFormat extends PostingsFormat {
   static final String PAY_CODEC = "Lucene103PostingsWriterPay";
 
   static final int VERSION_START = 0;
-
-  static final int VERSION_CURRENT = VERSION_START;
+  static final int VERSION_NORM = 1;
+  static final int VERSION_CURRENT = VERSION_NORM;
 
   private final int version;
   private final int minTermBlockSize;

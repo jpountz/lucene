@@ -81,6 +81,11 @@ public abstract class PostingsEnum extends DocIdSetIterator {
    */
   public abstract int freq() throws IOException;
 
+  public long norm() {
+    // nocommit: hack
+    throw new UnsupportedOperationException();
+  }
+
   /**
    * Returns the next position, or -1 if positions were not indexed. Calling this more than {@link
    * #freq()} times is undefined.

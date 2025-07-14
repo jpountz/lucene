@@ -24,6 +24,7 @@ import static org.apache.lucene.codecs.lucene103.Lucene103PostingsFormat.PAY_COD
 import static org.apache.lucene.codecs.lucene103.Lucene103PostingsFormat.POS_CODEC;
 import static org.apache.lucene.codecs.lucene103.Lucene103PostingsFormat.TERMS_CODEC;
 import static org.apache.lucene.codecs.lucene103.Lucene103PostingsFormat.VERSION_CURRENT;
+import static org.apache.lucene.codecs.lucene103.Lucene103PostingsFormat.VERSION_NORM;
 import static org.apache.lucene.codecs.lucene103.Lucene103PostingsFormat.VERSION_START;
 
 import java.io.IOException;
@@ -79,6 +80,8 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
   private static final List<Impact> DUMMY_IMPACTS_NO_FREQS =
       Collections.singletonList(new Impact(1, 1L));
 
+  private final int version;
+
   private final IndexInput docIn;
   private final IndexInput posIn;
   private final IndexInput payIn;
@@ -94,7 +97,6 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
         IndexFileNames.segmentFileName(
             state.segmentInfo.name, state.segmentSuffix, Lucene103PostingsFormat.META_EXTENSION);
     final long expectedDocFileLength, expectedPosFileLength, expectedPayFileLength;
-    int version;
     try (ChecksumIndexInput metaIn = state.directory.openChecksumInput(metaName)) {
       try {
         version =
@@ -346,6 +348,7 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
     private PostingDecodingUtil docInUtil;
 
     private final int[] freqBuffer = new int[BLOCK_SIZE];
+    private final byte[] normBuffer = new byte[BLOCK_SIZE];
     private final int[] posDeltaBuffer;
 
     private final int[] payloadLengthBuffer;
@@ -370,6 +373,7 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
 
     final IndexOptions options;
     final boolean indexHasFreq;
+    final boolean indexHasNorm;
     final boolean indexHasPos;
     final boolean indexHasOffsets;
     final boolean indexHasPayloads;
@@ -423,6 +427,7 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
         throws IOException {
       options = fieldInfo.getIndexOptions();
       indexHasFreq = options.compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
+      indexHasNorm = version >= VERSION_NORM && fieldInfo.omitsNorms() == false;
       indexHasPos = options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
       indexHasOffsets =
           options.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
@@ -441,6 +446,10 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
 
       if (needsFreq == false) {
         Arrays.fill(freqBuffer, 1);
+      }
+
+      if (indexHasNorm) {
+        Arrays.fill(normBuffer, (byte) 1);
       }
 
       if (needsFreq && needsImpacts) {
@@ -498,6 +507,7 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
         IndexInput docIn, FieldInfo fieldInfo, int flags, boolean needsImpacts) {
       return docIn == Lucene103PostingsReader.this.docIn
           && options == fieldInfo.getIndexOptions()
+          && indexHasNorm == fieldInfo.omitsNorms() == false
           && indexHasPayloads == fieldInfo.hasPayloads()
           && this.flags == flags
           && this.needsImpacts == needsImpacts;
@@ -591,6 +601,11 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
       return freqBuffer[docBufferUpto - 1];
     }
 
+    @Override
+    public long norm() {
+      return normBuffer[docBufferUpto - 1];
+    }
+
     private void refillFullBlock() throws IOException {
       int bitsPerValue = docIn.readByte();
       if (bitsPerValue > 0) {
@@ -633,6 +648,9 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
         }
         PForUtil.skip(docIn);
       }
+      if (indexHasNorm) {
+        docIn.readBytes(normBuffer, 0, BLOCK_SIZE);
+      }
       docCountLeft -= BLOCK_SIZE;
       prevDocID = docBuffer[BLOCK_SIZE - 1];
       docBufferUpto = 0;
@@ -651,7 +669,14 @@ public final class Lucene103PostingsReader extends PostingsReaderBase {
       } else {
         // Read vInts:
         PostingsUtil.readVIntBlock(
-            docIn, docBuffer, freqBuffer, docCountLeft, indexHasFreq, needsFreq);
+            docIn,
+            docBuffer,
+            freqBuffer,
+            normBuffer,
+            docCountLeft,
+            indexHasFreq,
+            needsFreq,
+            indexHasNorm);
         prefixSum(docBuffer, docCountLeft, prevDocID);
         docBuffer[docCountLeft] = NO_MORE_DOCS;
         freqFP = -1L;

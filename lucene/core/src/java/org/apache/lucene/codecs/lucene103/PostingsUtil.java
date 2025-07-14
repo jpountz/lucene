@@ -32,9 +32,11 @@ final class PostingsUtil {
       IndexInput docIn,
       int[] docBuffer,
       int[] freqBuffer,
+      byte[] normBuffer,
       int num,
       boolean indexHasFreq,
-      boolean decodeFreq)
+      boolean decodeFreq,
+      boolean indexHasNorm)
       throws IOException {
     GroupVIntUtil.readGroupVInts(docIn, docBuffer, num);
     if (indexHasFreq && decodeFreq) {
@@ -50,11 +52,20 @@ final class PostingsUtil {
         docBuffer[i] >>>= 1;
       }
     }
+    if (indexHasNorm) {
+      docIn.readBytes(normBuffer, 0, num);
+    }
   }
 
   /** Write freq buffer with variable-length encoding and doc buffer with group-varint encoding. */
   static void writeVIntBlock(
-      DataOutput docOut, int[] docBuffer, int[] freqBuffer, int num, boolean writeFreqs)
+      DataOutput docOut,
+      int[] docBuffer,
+      int[] freqBuffer,
+      long[] normBuffer,
+      int num,
+      boolean writeFreqs,
+      boolean writeNorms)
       throws IOException {
     if (writeFreqs) {
       for (int i = 0; i < num; i++) {
@@ -68,6 +79,12 @@ final class PostingsUtil {
         if (freq != 1) {
           docOut.writeVInt(freq);
         }
+      }
+    }
+    if (writeNorms) {
+      for (int i = 0; i < num; ++i) {
+        // nocommit: norms may not always be bytes
+        docOut.writeByte((byte) normBuffer[i]);
       }
     }
   }

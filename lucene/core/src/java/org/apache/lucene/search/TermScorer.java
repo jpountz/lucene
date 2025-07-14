@@ -91,13 +91,7 @@ public final class TermScorer extends Scorer {
   @Override
   public float score() throws IOException {
     var postingsEnum = this.postingsEnum;
-    var norms = this.norms;
-
-    long norm = 1L;
-    if (norms != null && norms.advanceExact(postingsEnum.docID())) {
-      norm = norms.longValue();
-    }
-    return scorer.score(postingsEnum.freq(), norm);
+    return scorer.score(postingsEnum.freq(), postingsEnum.norm());
   }
 
   @Override

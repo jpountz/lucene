@@ -44,12 +44,12 @@ public class TestPostingsUtil extends LuceneTestCase {
     try (Directory dir = newDirectory()) {
       try (IndexOutput out = dir.createOutput("test", IOContext.DEFAULT)) {
         // In old implementation, this would cause integer overflow exception.
-        PostingsUtil.writeVIntBlock(out, docDeltaBuffer, freqBuffer, size, true);
+        PostingsUtil.writeVIntBlock(out, docDeltaBuffer, freqBuffer, null, size, true, false);
       }
       int[] restoredDocs = new int[size];
       int[] restoredFreqs = new int[size];
       try (IndexInput in = dir.openInput("test", IOContext.DEFAULT)) {
-        PostingsUtil.readVIntBlock(in, restoredDocs, restoredFreqs, size, true, true);
+        PostingsUtil.readVIntBlock(in, restoredDocs, restoredFreqs, null, size, true, true, false);
       }
       assertEquals(delta, restoredDocs[0]);
     }
